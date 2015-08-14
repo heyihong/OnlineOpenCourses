@@ -38,7 +38,7 @@ class PeakProblem(object):
         if not (0 <= r and r < self.numRow):
             return 0
         if not (0 <= c and c < self.numCol):
-            return 0
+            return 0		
         return self.array[self.startRow + r][self.startCol + c]
 
     def getBetterNeighbor(self, location, trace = None):
