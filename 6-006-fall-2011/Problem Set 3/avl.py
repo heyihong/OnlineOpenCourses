@@ -75,8 +75,8 @@ Supports insert, find, and delete-min operations in O(lg n) time.
             node = node.parent
 
     def delete(self, t):
-        deleted = bst.BST.delete(self, t)
-        self.rebalance(deleted.parent)
+        node = bst.BST.delete(self, t)
+        self.rebalance(node.parent)
         self.reroot()
 
 def test(args=None):

@@ -184,9 +184,9 @@ and a pointer to the root.
         """Delete the node for key t if it is in the tree."""
         node = self.find(t)
         if node is not None:
-            deleted = node.delete()
+            node = node.delete()
             self.reroot()
-        return deleted
+        return node 
 
     def check(self):
         if self.root is not None:
