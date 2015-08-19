@@ -25,10 +25,10 @@ class TestMultidict(unittest.TestCase):
 # This test case may break once you add the argument m (skipping).
 class TestExactSubmatches(unittest.TestCase):
    def test_one(self):
-       foo = 'yabcabcabcz'
+       foo = 'abcabcabcz'
        bar = 'xxabcxxxx'
-       matches = list(getExactSubmatches(iter(foo), iter(bar), 3, 1))
-       correct = [(1,2), (4,2), (7,2)]
+       matches = list(getExactSubmatches(iter(foo), iter(bar), 3, 3))
+       correct = [(0,2), (3,2), (6,2)]
        self.assertTrue(len(matches) == len(correct))
        for x in correct:
            self.assertTrue(x in matches)
