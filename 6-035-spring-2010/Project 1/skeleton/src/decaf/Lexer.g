@@ -14,21 +14,87 @@ options
 
 tokens 
 {
-  "class";
+    "boolean";
+    "break";
+    "callout";
+    "class";
+    "continue";
+    "else";
+    "false";
+    "for";
+    "if";
+    "int";
+    "return";
+    "true";
+    "void";
 }
 
-LCURLY options { paraphrase = "{"; } : "{";
-RCURLY options { paraphrase = "}"; } : "}";
+LCURLY : "{";
 
-ID options { paraphrase = "an identifier"; } : 
-  ('a'..'z' | 'A'..'Z')+;
+RCURLY : "}";
 
-WS_ : (' ' | '\n' {newline();}) {_ttype = Token.SKIP; };
+LBRACKET : "[";
+
+RBRACKET : "]";
+
+LPARENT : "(";
+
+RPARENT : ")";
+
+DOT : ",";
+
+SEMICOLON : ";";
+
+ASSIGN : "=";
+
+PLUS : "+";
+
+MINUS : "-";
+
+MULTIPLY : "*";
+
+LT : "<";
+
+LTE : "<=";
+
+GT : ">";
+
+GTE : ">=";
+
+EQ : "==";
+
+NEQ : "!=";
+
+AND : "&&";
+
+OR : "||";
+
+ID :
+    ('_' | 'a'..'z' | 'A'..'Z')('_' | 'a' .. 'z' | 'A'..'Z' | '0'..'9')*;
+
+WS : (' ' | '\t' | '\n' {newline();}) {_ttype = Token.SKIP; };
 
 SL_COMMENT : "//" (~'\n')* '\n' {_ttype = Token.SKIP; newline (); };
 
-CHAR : '\'' (ESC|~'\'') '\'';
-STRING : '"' (ESC|~'"')* '"';
+
+CHAR : '\'' (ASCII_CHAR | ESC_CHAR) '\'';
+
+STRING : '"' (ASCII_CHAR | ESC_CHAR)* '"';
 
 protected
-ESC :  '\\' ('n'|'"');
+ASCII_CHAR
+    : ('\u0020'..'\u0021')
+    | ('\u0023'..'\u0026')
+    | ('\u0028'..'\u005b')
+    | ('\u005d'..'\u007e');
+
+protected
+ESC_CHAR :  '\\' ('"' | '\'' | '\\' | 't' | 'n');
+
+INT : DECIMAL | "0x" HEXDECIMAL;
+
+protected
+DECIMAL : ('0'..'9')+;
+
+protected
+HEXDECIMAL : ('0'..'9' | 'a'..'f' | 'A'..'F')+;

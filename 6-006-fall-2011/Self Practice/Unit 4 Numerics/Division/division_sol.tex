@@ -1,0 +1,19 @@
+\documentclass[12pt]{article} 
+\title{Division}
+\usepackage{url} 
+\usepackage{fontspec,xltxtra,xunicode} 
+\defaultfontfeatures{Mapping=tex-text}
+\setromanfont{Heiti SC} 
+\XeTeXlinebreaklocale “zh”
+\XeTeXlinebreakskip = 0pt plus 1pt minus 0.1pt 
+\begin{document}
+\date{}
+\maketitle
+\section*{Solution}
+这道题目如果使用朴素$O(n^2)$的高精度除法，即使做了优化，应该也是会超时的。想要通过此题，可以参考如下做法：\\
+\\
+不妨假设分子为a，分母为b。根据题意，可将结果表示为$\lfloor \frac{a10^d}{b} \rfloor$。由于直接计算仍然比较困难，不妨先思考计算$\lfloor \frac{10^d}{b} \rfloor$。
+对于这个公式，可以通过采用牛顿迭代来进行计算。首先，令$f(x) = \frac{1}{x} - \frac{b}{10^d}$。对其求导，有$f^{\''}(x)=\frac{-1}{x^2}$。根据$f(x)$和$f^{\''}(x)$可知，牛顿迭代的公式为$x^{\''} = 2 x - \frac{b x^2}{10^d}$。由于除$10^d$是很容易进行计算的，因此，一次迭代的时间和高精度乘法的时间是相同的。如果采用快速傅立叶变换进行乘法，则可以使迭代时间达到$O(nlg(n))$。又因为牛顿迭代是平方收敛的，只需要进行$O(lg(d))$次的迭代即可得到解，因此可以在$O(nlg(n)lg(d))$的时间内算得$\lfloor \frac{10^d}{b} \rfloor$。\\
+\\
+由于最终结果需要乘上a，对于计算的精度需要进行放大。可以先计算出精度误差在$10^{d+ \lceil log_{10}(a) \rceil}$内的结果，然后乘上a。即可得到精度误差在$10^d$内的答案了。
+\end{document}

@@ -1,4 +1,8 @@
 .DS_Store
+*.idea*
 *.pyc
 *.pdf
-
+*.jar
+*.class
+*.gif
+*.png
