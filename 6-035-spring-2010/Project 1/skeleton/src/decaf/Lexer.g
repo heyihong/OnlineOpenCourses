@@ -20,13 +20,13 @@ tokens
     "class";
     "continue";
     "else";
-    "false";
     "for";
     "if";
     "int";
     "return";
-    "true";
     "void";
+    "true";
+    "false";
 }
 
 LCURLY : "{";
@@ -41,60 +41,84 @@ LPARENT : "(";
 
 RPARENT : ")";
 
-DOT : ",";
+COMMA : ",";
 
 SEMICOLON : ";";
 
-ASSIGN : "=";
+PLUS: "+";
 
-PLUS : "+";
+MINUS: "-";
 
-MINUS : "-";
+MULTIPLY: "*";
 
-MULTIPLY : "*";
+DIVIDE: "/";
 
-LT : "<";
+MODULO: "%";
 
-LTE : "<=";
+EQUAL_ASSIGN: "=";
 
-GT : ">";
+PLUS_ASSIGN: "+=";
 
-GTE : ">=";
+MINUS_ASSIGN: "-=";
 
-EQ : "==";
+LT: "<";
 
-NEQ : "!=";
+GT: ">";
 
-AND : "&&";
+LTEQ: "<=";
 
-OR : "||";
+GTEQ: ">=";
 
-ID :
-    ('_' | 'a'..'z' | 'A'..'Z')('_' | 'a' .. 'z' | 'A'..'Z' | '0'..'9')*;
+EQ: "==";
+
+NEQ: "!=";
+
+NOT: "!";
+
+AND: "&&";
+
+OR: "||";
 
 WS : (' ' | '\t' | '\n' {newline();}) {_ttype = Token.SKIP; };
 
 SL_COMMENT : "//" (~'\n')* '\n' {_ttype = Token.SKIP; newline (); };
 
-
-CHAR : '\'' (ASCII_CHAR | ESC_CHAR) '\'';
-
-STRING : '"' (ASCII_CHAR | ESC_CHAR)* '"';
-
 protected
-ASCII_CHAR
+CHAR
     : ('\u0020'..'\u0021')
     | ('\u0023'..'\u0026')
     | ('\u0028'..'\u005b')
-    | ('\u005d'..'\u007e');
+    | ('\u005d'..'\u007e')
+    | '\\' ('"' | '\'' | '\\' | 't' | 'n');
+
+ID : ALPHA (ALPHA_NUM)*;
 
 protected
-ESC_CHAR :  '\\' ('"' | '\'' | '\\' | 't' | 'n');
-
-INT : DECIMAL | "0x" HEXDECIMAL;
-
-protected
-DECIMAL : ('0'..'9')+;
+ALPHA_NUM
+    : ALPHA | DIGIT;
 
 protected
-HEXDECIMAL : ('0'..'9' | 'a'..'f' | 'A'..'F')+;
+ALPHA
+    : '_'
+    | 'a'..'z'
+    | 'A'..'Z';
+
+protected
+DIGIT
+    : '0'..'9';
+
+protected
+HEX_DIGIT
+    : DIGIT | 'a'..'f' | 'A'..'F';
+
+INT_LITERAL : DECIMAL_LITERAL | HEX_LITERAL;
+
+protected
+DECIMAL_LITERAL : ('0'..'9')+;
+
+protected
+HEX_LITERAL : "0x" (HEX_DIGIT)+;
+
+CHAR_LITERAL : '\'' CHAR '\'';
+
+STRING_LITERAL : '"' (CHAR)* '"';

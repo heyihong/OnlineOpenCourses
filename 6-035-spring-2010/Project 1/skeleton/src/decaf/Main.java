@@ -31,13 +31,13 @@ class Main {
 		        			    case DecafScannerTokenTypes.ID:
 		        				    type = " IDENTIFIER";
 		        				    break;
-                                case DecafScannerTokenTypes.CHAR:
+                                case DecafScannerTokenTypes.CHAR_LITERAL:
                                     type = " CHARLITERAL";
                                     break;
-                                case DecafScannerTokenTypes.INT:
+                                case DecafScannerTokenTypes.INT_LITERAL:
                                     type = " INTLITERAL";
                                     break;
-                                case DecafScannerTokenTypes.STRING:
+                                case DecafScannerTokenTypes.STRING_LITERAL:
                                     type = " STRINGLITERAL";
                                     break;
                                 case DecafScannerTokenTypes.TK_true:
@@ -45,7 +45,6 @@ class Main {
                                     type = " BOOLEANLITERAL";
                                     break;
 		        			}
-
 		        			System.out.println (token.getLine() + type + " " + text);
 		        		}
 		        		done = true;
