@@ -171,11 +171,98 @@
 	  (lambda (new old) (append new old))
 	  graph))
 
-
 ; (DFS-simple 'a
 ;             (lambda (node) (eq? node 'l))
 ;             test-graph)
-  
+
+(define (BFS-simple start goal? graph)
+  (search start
+	  	  goal?
+	  	  find-node-children
+	  	  (lambda (new old) (append old new))
+	  	  graph))
+
+;; Explanation:
+;; It's because the order of visiting node of breadth-first search
+;; is base on the distance between start and nodes, so we neeed to finish searching
+;; old node first which is more close to start.
+
+(define (search-with-cycles initial-state goal? successors merge graph)
+  ;; initial-state is the start state of the search
+  ;;
+  ;; goal? is the predicate that determines whether we have
+  ;; reached the goal
+  ;;
+  ;; successors computes from the current state all successor states
+  ;;
+  ;; merge combines new states with the set of states still to explore
+  (define (search-with-cycles-inner still-to-do visited-nodes)
+    (if (null? still-to-do)
+	#f
+	(let ((current (car still-to-do)))
+	  (if *search-debug*
+	      (write-line (list 'now-at current)))
+	  (if (goal? current)
+	      #t
+	      (let ((new-visited-nodes (append visited-nodes (list (car still-to-do)))))
+	      	   (search-with-cycles-inner (filter (lambda (node) 
+	      	   									 		 (if (memq node 
+	      	   									 	       		   new-visited-nodes)
+	      	   									     		  #f
+	      	   									     		  #t)) 
+	      	   									 		 (merge (successors graph current)
+	      								   		 	    		(cdr still-to-do)))
+	      	   							  new-visited-nodes))))))
+  (search-with-cycles-inner (list initial-state) '()))
+
+
+
+(define (DFS start goal? graph)
+		(search-with-cycles start
+							goal?
+							find-node-children
+							(lambda (new old) (append old new))
+							graph))
+
+(define (BFS start goal? graph)
+		(search-with-cycles start
+							goal?
+							find-node-children
+							(lambda (new old) (append new old))
+							graph))
+
+(DFS 'a
+	 (lambda (node) (eq? node 'c))
+	 test-cycle)
+
+(DFS 'a
+	 (lambda (node) (eq? node 'd))
+	 test-cycle)
+
+(load "generate.scm")
+
+(DFS 'http://sicp.csail.mit.edu/
+	 (lambda (node) #f)
+	 the-web)
+
+;(now-at http://sicp.csail.mit.edu/)
+;(now-at http://sicp.csail.mit.edu/schemeimplementations)
+;(now-at http://sicp.csail.mit.edu/psets)
+;(now-at http://sicp.csail.mit.edu/getting-help.html)
+;(now-at http://sicp.csail.mit.edu/lab-use.html)
+;(now-at *the-goal*)
+
+
+(BFS 'http://sicp.csail.mit.edu/
+	 (lambda (node) #f)
+	 the-web)
+
+;(now-at http://sicp.csail.mit.edu/)
+;(now-at http://sicp.csail.mit.edu/schemeimplementations)
+;(now-at http://sicp.csail.mit.edu/getting-help.html)
+;(now-at http://sicp.csail.mit.edu/lab-use.html)
+;(now-at *the-goal*)
+;(now-at http://sicp.csail.mit.edu/psets)
 
 ;; you will need to write a similar search procedure that handles cycles
 
@@ -210,7 +297,7 @@
          (error "object not an index: " index))
         (else (set-cdr! index '())
               index)))
-      
+
 ; This is an internal helper procedure not to
 ; be used externally.
 (define (find-entry-in-index index key)
@@ -228,25 +315,23 @@
         '())))
 
 ;; TO BE IMPLEMENTED
-;;(define (add-to-index! index key value) ; Index,Key,Val -> Index
-;;  (let ((index-entry (find-entry-in-index index key)))
-;;    (if (null? index-entry)
-;;      ;; no entry -- create and insert a new one...
-;;	;... TO BE IMPLEMENTED
-;;
-;;      ;; entry exists -- insert value if not already there...
-;;	;... TO BE IMPLEMENTED
-;;	))
-;;  index)
+
+(define (add-to-index! index key value)
+	(let ((index-entry (find-entry-in-index index key)))
+		(if index-entry
+			(append! (cadr index-entry) (list value))
+			(append! index (list (cons key (cons (list value) '()))))
+			))
+	index)
 
 ;; Testing
-;; (define test-index (make-index))
-;; (add-to-index! test-index 'key1 'value1)
-;; (add-to-index! test-index 'key2 'value2)
-;; (add-to-index! test-index 'key1 'another-value1)
-;; 
-;; (find-in-index test-index 'key1)
-;; (find-in-index test-index 'key2)
+(define test-index (make-index))
+(add-to-index! test-index 'key1 'value1)
+(add-to-index! test-index 'key2 'value2)
+(add-to-index! test-index 'key1 'another-value1)
+ 
+(find-in-index test-index 'key1)
+(find-in-index test-index 'key2)
 
 
 ;;------------------------------------------------------------
