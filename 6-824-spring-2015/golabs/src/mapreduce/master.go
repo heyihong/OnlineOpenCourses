@@ -2,13 +2,13 @@ package mapreduce
 
 import "container/list"
 import "fmt"
-
+import "sync/atomic"
+import "runtime"
 
 type WorkerInfo struct {
 	address string
 	// You can add definitions here.
 }
-
 
 // Clean up all workers by sending a Shutdown RPC to each one of them Collect
 // the number of jobs each work has performed.
@@ -30,5 +30,67 @@ func (mr *MapReduce) KillWorkers() *list.List {
 
 func (mr *MapReduce) RunMaster() *list.List {
 	// Your code here
+	nMap := mr.nMap
+	nReduce := mr.nReduce
+
+	doJobArgsChannel := make(chan DoJobArgs)
+
+	mapJobsDone := make(chan bool)
+	reduceJobsDone := make(chan bool)
+
+	var nFinishedMapJob int32 = 0
+	var nFinishedReduceJob int32 = 0
+
+	// Manage register workers
+	go func() {
+		for worker := range mr.registerChannel {
+			go func(workerName string) {
+				for args := range doJobArgsChannel {
+					var reply DoJobReply
+					call(workerName, "Worker.DoJob", args, &reply)
+					switch args.Operation {
+					case Map:
+						atomic.AddInt32(&nFinishedMapJob, 1)
+						if atomic.LoadInt32(&nFinishedMapJob) == int32(nMap) {
+							mapJobsDone <- true
+						}
+					case Reduce:
+						atomic.AddInt32(&nFinishedReduceJob, 1)
+						if atomic.LoadInt32(&nFinishedReduceJob) == int32(nReduce) {
+							reduceJobsDone <- true
+						}
+					}
+					runtime.Gosched()
+				}
+			}(worker)
+		}
+	}()
+
+	done := make(chan bool)
+	// Generate map and reduce jobs
+	go func() {
+		for i := 0; i < nMap; i++ {
+			doJobArgs := DoJobArgs{
+				File:          mr.file,
+				Operation:     Map,
+				JobNumber:     i,
+				NumOtherPhase: nReduce}
+			doJobArgsChannel <- doJobArgs
+		}
+		// Wait until all map jobs finished
+		<-mapJobsDone
+		for i := 0; i < nReduce; i++ {
+			doJobArgs := DoJobArgs{
+				File:          mr.file,
+				Operation:     Reduce,
+				JobNumber:     i,
+				NumOtherPhase: nMap}
+			doJobArgsChannel <- doJobArgs
+		}
+		// Wait until all reduce jobs finished
+		<-reduceJobsDone
+		done <- true
+	}()
+	<-done
 	return mr.KillWorkers()
 }
