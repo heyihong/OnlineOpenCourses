@@ -47,20 +47,25 @@ func (mr *MapReduce) RunMaster() *list.List {
 			go func(workerName string) {
 				for args := range doJobArgsChannel {
 					var reply DoJobReply
-					call(workerName, "Worker.DoJob", args, &reply)
-					switch args.Operation {
-					case Map:
-						atomic.AddInt32(&nFinishedMapJob, 1)
-						if atomic.LoadInt32(&nFinishedMapJob) == int32(nMap) {
-							mapJobsDone <- true
+					ok := call(workerName, "Worker.DoJob", args, &reply)
+					if ok {
+						switch args.Operation {
+						case Map:
+							atomic.AddInt32(&nFinishedMapJob, 1)
+							if atomic.LoadInt32(&nFinishedMapJob) == int32(nMap) {
+								mapJobsDone <- true
+							}
+						case Reduce:
+							atomic.AddInt32(&nFinishedReduceJob, 1)
+							if atomic.LoadInt32(&nFinishedReduceJob) == int32(nReduce) {
+								reduceJobsDone <- true
+							}
 						}
-					case Reduce:
-						atomic.AddInt32(&nFinishedReduceJob, 1)
-						if atomic.LoadInt32(&nFinishedReduceJob) == int32(nReduce) {
-							reduceJobsDone <- true
-						}
+						runtime.Gosched()
+					} else {
+						doJobArgsChannel <- args
+						break
 					}
-					runtime.Gosched()
 				}
 			}(worker)
 		}
