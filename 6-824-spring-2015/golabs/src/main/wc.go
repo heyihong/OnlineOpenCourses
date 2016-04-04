@@ -52,7 +52,7 @@ func main() {
 			// Wait until MR is done
 			<-mr.DoneChannel
 		}
-	} else {
+	} else if os.Args[1] == "worker" {
 		mapreduce.RunWorker(os.Args[2], os.Args[3], Map, Reduce, 100)
 	}
 }
