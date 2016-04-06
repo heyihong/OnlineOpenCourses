@@ -72,11 +72,11 @@
       (error "object not a graph: " graph)
       (cdr graph)))
 
-(define (graph-root graph)		; Graph -> Node|null
+(define (graph-root graph)    ; Graph -> Node|null
   (let ((elements (graph-elements graph)))
     (if (null? elements)
-	#f
-	(graph-element->node (car elements)))))
+  #f
+  (graph-element->node (car elements)))))
 
 ; Find the specified node in the graph
 (define (find-graph-element graph node)   ; Graph,Node -> Graph-Element|null
@@ -154,22 +154,22 @@
   ;; merge combines new states with the set of states still to explore
   (define (search-inner still-to-do)
     (if (null? still-to-do)
-	#f
-	(let ((current (car still-to-do)))
-	  (if *search-debug*
-	      (write-line (list 'now-at current)))
-	  (if (goal? current)
-	      #t
-	      (search-inner
-	       (merge (successors graph current) (cdr still-to-do)))))))
+  #f
+  (let ((current (car still-to-do)))
+    (if *search-debug*
+        (write-line (list 'now-at current)))
+    (if (goal? current)
+        #t
+        (search-inner
+         (merge (successors graph current) (cdr still-to-do)))))))
   (search-inner (list initial-state)))
 
 (define (DFS-simple start goal? graph)
   (search start
-	  goal?
-	  find-node-children
-	  (lambda (new old) (append new old))
-	  graph))
+    goal?
+    find-node-children
+    (lambda (new old) (append new old))
+    graph))
 
 ; (DFS-simple 'a
 ;             (lambda (node) (eq? node 'l))
@@ -177,10 +177,10 @@
 
 (define (BFS-simple start goal? graph)
   (search start
-	  	  goal?
-	  	  find-node-children
-	  	  (lambda (new old) (append old new))
-	  	  graph))
+        goal?
+        find-node-children
+        (lambda (new old) (append old new))
+        graph))
 
 ;; Explanation:
 ;; It's because the order of visiting node of breadth-first search
@@ -198,52 +198,52 @@
   ;; merge combines new states with the set of states still to explore
   (define (search-with-cycles-inner still-to-do visited-nodes)
     (if (null? still-to-do)
-	#f
-	(let ((current (car still-to-do)))
-	  (if *search-debug*
-	      (write-line (list 'now-at current)))
-	  (if (goal? current)
-	      #t
-	      (let ((new-visited-nodes (append visited-nodes (list (car still-to-do)))))
-	      	   (search-with-cycles-inner (filter (lambda (node) 
-	      	   									 		 (if (memq node 
-	      	   									 	       		   new-visited-nodes)
-	      	   									     		  #f
-	      	   									     		  #t)) 
-	      	   									 		 (merge (successors graph current)
-	      								   		 	    		(cdr still-to-do)))
-	      	   							  new-visited-nodes))))))
+  #f
+  (let ((current (car still-to-do)))
+    (if *search-debug*
+        (write-line (list 'now-at current)))
+    (if (goal? current)
+        #t
+        (let ((new-visited-nodes (append visited-nodes (list (car still-to-do)))))
+             (search-with-cycles-inner (filter (lambda (node) 
+                                   (if (memq node 
+                                             new-visited-nodes)
+                                        #f
+                                        #t)) 
+                                   (merge (successors graph current)
+                                        (cdr still-to-do)))
+                            new-visited-nodes))))))
   (search-with-cycles-inner (list initial-state) '()))
 
 
 
 (define (DFS start goal? graph)
-		(search-with-cycles start
-							goal?
-							find-node-children
-							(lambda (new old) (append old new))
-							graph))
+    (search-with-cycles start
+              goal?
+              find-node-children
+              (lambda (new old) (append old new))
+              graph))
 
 (define (BFS start goal? graph)
-		(search-with-cycles start
-							goal?
-							find-node-children
-							(lambda (new old) (append new old))
-							graph))
+    (search-with-cycles start
+              goal?
+              find-node-children
+              (lambda (new old) (append new old))
+              graph))
 
 (DFS 'a
-	 (lambda (node) (eq? node 'c))
-	 test-cycle)
+   (lambda (node) (eq? node 'c))
+   test-cycle)
 
 (DFS 'a
-	 (lambda (node) (eq? node 'd))
-	 test-cycle)
+   (lambda (node) (eq? node 'd))
+   test-cycle)
 
 (load "generate.scm")
 
 (DFS 'http://sicp.csail.mit.edu/
-	 (lambda (node) #f)
-	 the-web)
+   (lambda (node) #f)
+   the-web)
 
 ;(now-at http://sicp.csail.mit.edu/)
 ;(now-at http://sicp.csail.mit.edu/schemeimplementations)
@@ -254,8 +254,8 @@
 
 
 (BFS 'http://sicp.csail.mit.edu/
-	 (lambda (node) #f)
-	 the-web)
+   (lambda (node) #f)
+   the-web)
 
 ;(now-at http://sicp.csail.mit.edu/)
 ;(now-at http://sicp.csail.mit.edu/schemeimplementations)
@@ -317,12 +317,12 @@
 ;; TO BE IMPLEMENTED
 
 (define (add-to-index! index key value)
-	(let ((index-entry (find-entry-in-index index key)))
-		(if index-entry
-			(append! (cadr index-entry) (list value))
-			(append! index (list (cons key (cons (list value) '()))))
-			))
-	index)
+  (let ((index-entry (find-entry-in-index index key)))
+    (if (not (null? index-entry))
+      (append! (cadr index-entry) (list value))
+      (append! index (list (cons key (cons (list value) '()))))
+      ))
+  index)
 
 ;; Testing
 (define test-index (make-index))
@@ -332,7 +332,6 @@
  
 (find-in-index test-index 'key1)
 (find-in-index test-index 'key2)
-
 
 ;;------------------------------------------------------------
 ;; Finally, the Web!
@@ -358,7 +357,6 @@
 (define (find-URL-text web url)
   (find-node-contents web url))
 
-
 ;; The real definition of THE-WEB we'll use is in another file, 
 ;; including all of the words in the documents.
 
@@ -381,13 +379,11 @@
 ;;    '(... words extracted from http://sicp.csail.mit.edu/getting-help.html))
 ;;   ...))
 
-
 ;;--------------------
 ;; Searching the Web
 
 ;; you need to write expressions to search the web using different search
 ;; strategies
-
 
 ;;--------------------
 ;; Indexing the Web
@@ -410,30 +406,151 @@
 ;; ...
 ;; )
 
+(define (add-document-to-index! index web url)
+        (let ((words (find-URL-text web url)))
+             (for-each (lambda (word) (add-to-index! index word url))
+                       words)
+             index))
 
 ;; Example use
 ;; 
-;; (define the-web-index (make-index))
-;; 
-;; (add-document-to-index! the-web-index
-;;                         the-web 
-;;                         'http://sicp.csail.mit.edu/)
-;; 
-;; (find-in-index 'help)
-;; ;Value: (http://sicp.csail.mit.edu/)
-;; 
-;; (find-in-index '*magic*)
-;; ;Value: #f
+(define the-web-index (make-index))
+ 
+(add-document-to-index! the-web-index
+                        the-web 
+                        'http://sicp.csail.mit.edu/)
 
+(find-in-index the-web-index 'help)
+;Value: (http://sicp.csail.mit.edu/)
+ 
+(find-in-index the-web-index '*magic*)
+;Value: ()
+
+
+(define (search-final-version initial-state goal? successors merge action graph)
+  ;; initial-state is the start state of the search
+  ;;
+  ;; goal? is the predicate that determines whether we have
+  ;; reached the goal
+  ;;
+  ;; successors computes from the current state all successor states
+  ;;
+  ;; merge combines new states with the set of states still to explore
+  ;; action is called every time a new node is visited in search
+  (define (search-final-version-inner still-to-do visited-nodes)
+    (if (null? still-to-do)
+  #f
+  (let ((current (car still-to-do)))
+    (if *search-debug*
+        (write-line (list 'now-at current)))
+    (action current)
+    (if (goal? current)
+        #t
+        (let ((new-visited-nodes (append visited-nodes (list (car still-to-do)))))
+             (search-final-version-inner (filter (lambda (node) 
+                                   (if (memq node 
+                                             new-visited-nodes)
+                                        #f
+                                        #t)) 
+                                   (merge (successors graph current)
+                                        (cdr still-to-do)))
+                            new-visited-nodes))))))
+  (search-final-version-inner (list initial-state) '()))
+
+(define (make-web-index web url)
+        (define web-index (make-index))
+        (search-final-version url
+                              (lambda (n) #f)
+                              (lambda (w u) (find-URL-links w u))
+                              (lambda (n o) (append n o))
+                              (lambda (u) (add-document-to-index! web-index web u))
+                              web)
+        (lambda (word) (find-in-index web-index word)))
+
+(define find-documents (make-web-index the-web 'http://sicp.csail.mit.edu/))
+
+(find-documents 'collaborative)
+
+;; A dynamic web search
+
+(define (search-any web start-node word)
+      (define result #f)
+      (BFS start-node
+           (lambda (url) 
+                   (let ((contains-word (if (memq word (find-URL-text web url)) #t #f)))
+                        (if contains-word (set! result url))
+                        contains-word))
+           web)
+      result)
+
+
+(define (search-all web start-node word)
+        (define result (list))
+        (BFS start-node
+             (lambda (url)
+                     (if (memq word (find-URL-text web url))
+                         (if (null? result)
+                             (set! result (list url))
+                             (append! result (list url))))
+                     #f)
+             web)
+        result)
 
 ;;------------------------------------------------------------
 ;; utility for timing procedure calls.
 ;; returns the time in seconds
 
 (define (timed f . args)
-  (let ((start (runtime)))
+  (let ((start (process-time-clock)))
     (let ((val (apply f args)))
       (newline)
       (display "time expended: ")
-      (display (- (runtime) start))
+      (display (- (process-time-clock) start))
       val)))
+
+(define (call-n-times n f . args)
+        (for-each (lambda (x) (apply f args))
+                  (make-list n 0)))
+
+(timed call-n-times 1000 search-any the-web 'http://sicp.csail.mit.edu/ 'help)
+
+(timed call-n-times 1000 search-any the-web 'http://sicp.csail.mit.edu/ 'Susanhockfield)
+
+(timed call-n-times 1000 search-all the-web 'http://sicp.csail.mit.edu/ 'help)
+
+(timed call-n-times 100000 find-documents 'help)
+
+(timed call-n-times 100000 find-documents 'Susanhockfield)
+
+(define (optimize-index index) 
+        (if (not (index? index))
+            (error "object not an index: " index)
+            (cons 'optimized-index 
+                  (sort! (list->vector (cdr index))
+                         (lambda (x y) (symbol<? (car x) (car y)))))))
+
+(define (find-entry-in-optimized-index optimized-index key)
+        (define (find-entry-in-optimized-index-helper left right)
+                (let ((mid (quotient (+ left right) 2)))
+                     (let ((mid-key (car (vector-ref (cdr optimized-index) mid))))
+                          (cond ((< right left) #f)
+                                ((symbol<? key mid-key) (find-entry-in-optimized-index-helper left (- mid 1)))
+                                ((symbol<? mid-key key) (find-entry-in-optimized-index-helper (+ mid 1) right))
+                                (else (vector-ref (cdr optimized-index) mid))))))
+        (find-entry-in-optimized-index-helper 0 (- (vector-length (cdr optimized-index)) 1)))
+
+(define (make-optimized-web-index web url)
+        (define web-index (make-index))
+        (search-final-version url
+                              (lambda (n) #f)
+                              (lambda (w u) (find-URL-links w u))
+                              (lambda (n o) (append n o))
+                              (lambda (u) (add-document-to-index! web-index web u))
+                              web)
+        (lambda (word) (cadr (find-entry-in-optimized-index (optimize-index web-index) word))))
+
+(define find-documents-with-optimized-index (make-optimized-web-index the-web 'http://sicp.csail.mit.edu/))
+
+(timed call-n-times 1000 find-documents-with-optimized-index 'help)
+
+(timed call-n-times 1000 find-documents-with-optimized-index 'Susanhockfield)
