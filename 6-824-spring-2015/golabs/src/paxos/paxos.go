@@ -31,7 +31,6 @@ import "sync/atomic"
 import "fmt"
 import "math/rand"
 
-
 // px.Status() return values, indicating
 // whether an agreement has been decided,
 // or Paxos has not yet reached agreement,
@@ -53,8 +52,49 @@ type Paxos struct {
 	peers      []string
 	me         int // index into peers[]
 
-
 	// Your data here.
+	maxSeq     int
+	paxosInsts map[int]*PaxosInstance
+}
+
+type PaxosInstance struct {
+	mu                    sync.Mutex
+	maxNumPrepare         int
+	maxNumAccept          int
+	valueWithMaxNumAccept interface{}
+	result                interface{}
+	fate                  Fate
+}
+
+type PrepareArgs struct {
+	Seq int
+	Num int
+}
+
+type PrepareReply struct {
+	Ok                    bool
+	Num                   int
+	MaxNumAccept          int
+	ValueWithMaxNumAccept interface{}
+}
+
+type AcceptArgs struct {
+	Seq int
+	Num int
+	V   interface{}
+}
+
+type AcceptReply struct {
+	Ok  bool
+	Num int
+}
+
+type DecideArgs struct {
+	Seq int
+	V   interface{}
+}
+
+type DecideReply struct {
 }
 
 //
@@ -93,6 +133,67 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 	return false
 }
 
+func (px *Paxos) GetPaxosInstance(seq int) *PaxosInstance {
+	px.mu.Lock()
+	paxosInst, ok := px.paxosInsts[seq]
+	if !ok {
+		paxosInst = &PaxosInstance{}
+		paxosInst.maxNumPrepare = -1
+		paxosInst.maxNumAccept = -1
+		paxosInst.fate = Pending
+		px.paxosInsts[seq] = paxosInst
+	}
+	px.mu.Unlock()
+	return paxosInst
+}
+
+func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
+	paxosInst := px.GetPaxosInstance(args.Seq)
+	paxosInst.mu.Lock()
+	if args.Num > paxosInst.maxNumPrepare {
+		paxosInst.maxNumPrepare = args.Num
+		reply.Ok = true
+		reply.Num = args.Num
+		reply.MaxNumAccept = paxosInst.maxNumAccept
+		reply.ValueWithMaxNumAccept = paxosInst.valueWithMaxNumAccept
+	} else {
+		reply.Ok = false
+	}
+	paxosInst.mu.Unlock()
+	return nil
+}
+
+func (px *Paxos) Accept(args *AcceptArgs, reply *AcceptReply) error {
+	paxosInst := px.GetPaxosInstance(args.Seq)
+	paxosInst.mu.Lock()
+	if args.Num >= paxosInst.maxNumPrepare {
+		paxosInst.maxNumPrepare = args.Num
+		paxosInst.maxNumAccept = args.Num
+		paxosInst.valueWithMaxNumAccept = args.V
+		reply.Ok = true
+		reply.Num = args.Num
+	} else {
+		reply.Ok = false
+	}
+	paxosInst.mu.Unlock()
+	return nil
+}
+
+func (px *Paxos) Decide(args *DecideArgs, reply *DecideReply) error {
+	px.mu.Lock()
+	if args.Seq > px.maxSeq {
+		px.maxSeq = args.Seq
+	}
+	px.mu.Unlock()
+	paxosInst := px.GetPaxosInstance(args.Seq)
+	paxosInst.mu.Lock()
+	if paxosInst.fate == Pending {
+		paxosInst.result = args.V
+		paxosInst.fate = Decided
+	}
+	paxosInst.mu.Unlock()
+	return nil
+}
 
 //
 // the application wants paxos to start agreement on
@@ -103,6 +204,57 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 //
 func (px *Paxos) Start(seq int, v interface{}) {
 	// Your code here.
+	go func() {
+		decided := false
+		num := px.me
+		for ; !decided; num += len(px.peers) {
+			prepareArgs := &PrepareArgs{}
+			prepareArgs.Seq = seq
+			prepareArgs.Num = num
+			numOk := 0
+			maxNumAccept := -1
+			valueWithMaxNumAccept := v
+			for _, peer := range px.peers {
+				var reply PrepareReply
+				call(peer, "Paxos.Prepare", prepareArgs, &reply)
+				if reply.Ok {
+					numOk += 1
+					if maxNumAccept < reply.MaxNumAccept {
+						maxNumAccept = reply.MaxNumAccept
+						valueWithMaxNumAccept = reply.ValueWithMaxNumAccept
+					}
+				}
+			}
+			if numOk*2 > len(px.peers) {
+				acceptArgs := &AcceptArgs{}
+				acceptArgs.Seq = seq
+				acceptArgs.Num = num
+				acceptArgs.V = valueWithMaxNumAccept
+				numOk = 0
+				for _, peer := range px.peers {
+					var reply AcceptReply
+					call(peer, "Paxos.Accept", acceptArgs, &reply)
+					if reply.Ok {
+						numOk += 1
+					}
+				}
+				if numOk*2 > len(px.peers) {
+					decideArgs := &DecideArgs{}
+					decideArgs.Seq = seq
+					decideArgs.V = acceptArgs.V
+					for idx, peer := range px.peers {
+						var reply DecideReply
+						if idx == px.me {
+							px.Decide(decideArgs, &reply)
+						} else {
+							call(peer, "Paxos.Decide", decideArgs, &reply)
+						}
+					}
+					decided = true
+				}
+			}
+		}
+	}()
 }
 
 //
@@ -122,7 +274,10 @@ func (px *Paxos) Done(seq int) {
 //
 func (px *Paxos) Max() int {
 	// Your code here.
-	return 0
+	px.mu.Lock()
+	result := px.maxSeq
+	px.mu.Unlock()
+	return result
 }
 
 //
@@ -167,10 +322,14 @@ func (px *Paxos) Min() int {
 //
 func (px *Paxos) Status(seq int) (Fate, interface{}) {
 	// Your code here.
-	return Pending, nil
+	paxosInst := px.GetPaxosInstance(seq)
+	paxosInst.mu.Lock()
+	result := paxosInst.result
+	fate := paxosInst.fate
+	// fmt.Println(px.me, seq, result, fate)
+	paxosInst.mu.Unlock()
+	return fate, result
 }
-
-
 
 //
 // tell the peer to shut itself down.
@@ -214,8 +373,9 @@ func Make(peers []string, me int, rpcs *rpc.Server) *Paxos {
 	px.peers = peers
 	px.me = me
 
-
 	// Your initialization code here.
+	px.maxSeq = -1
+	px.paxosInsts = make(map[int]*PaxosInstance)
 
 	if rpcs != nil {
 		// caller will create socket &c
@@ -267,7 +427,6 @@ func Make(peers []string, me int, rpcs *rpc.Server) *Paxos {
 			}
 		}()
 	}
-
 
 	return px
 }
