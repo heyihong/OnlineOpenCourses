@@ -53,8 +53,10 @@ type Paxos struct {
 	me         int // index into peers[]
 
 	// Your data here.
-	maxSeq     int
-	paxosInsts map[int]*PaxosInstance
+	maxSeq        int
+	maxDoneSeq    int
+	CurrentMinSeq int
+	paxosInsts    map[int]*PaxosInstance
 }
 
 type PaxosInstance struct {
@@ -97,6 +99,20 @@ type DecideArgs struct {
 type DecideReply struct {
 }
 
+type GetMaxDoneSeqArgs struct {
+}
+
+type GetMaxDoneSeqReply struct {
+	MaxDoneSeq int
+}
+
+type UpdateCurrentMinSeqArgs struct {
+	CurrentMinSeq int
+}
+
+type UpdateCurrentMinSeqReply struct {
+}
+
 //
 // call() sends an RPC to the rpcname handler on server srv
 // with arguments args, waits for the reply, and leaves the
@@ -135,6 +151,10 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 
 func (px *Paxos) GetPaxosInstance(seq int) *PaxosInstance {
 	px.mu.Lock()
+	if seq < px.CurrentMinSeq {
+		px.mu.Unlock()
+		return nil
+	}
 	paxosInst, ok := px.paxosInsts[seq]
 	if !ok {
 		paxosInst = &PaxosInstance{}
@@ -149,6 +169,10 @@ func (px *Paxos) GetPaxosInstance(seq int) *PaxosInstance {
 
 func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
 	paxosInst := px.GetPaxosInstance(args.Seq)
+	if paxosInst == nil {
+		reply.Ok = false
+		return nil
+	}
 	paxosInst.mu.Lock()
 	if args.Num > paxosInst.maxNumPrepare {
 		paxosInst.maxNumPrepare = args.Num
@@ -165,6 +189,10 @@ func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
 
 func (px *Paxos) Accept(args *AcceptArgs, reply *AcceptReply) error {
 	paxosInst := px.GetPaxosInstance(args.Seq)
+	if paxosInst == nil {
+		reply.Ok = false
+		return nil
+	}
 	paxosInst.mu.Lock()
 	if args.Num >= paxosInst.maxNumPrepare {
 		paxosInst.maxNumPrepare = args.Num
@@ -186,6 +214,9 @@ func (px *Paxos) Decide(args *DecideArgs, reply *DecideReply) error {
 	}
 	px.mu.Unlock()
 	paxosInst := px.GetPaxosInstance(args.Seq)
+	if paxosInst == nil {
+		return nil
+	}
 	paxosInst.mu.Lock()
 	if paxosInst.fate == Pending {
 		paxosInst.result = args.V
@@ -203,6 +234,12 @@ func (px *Paxos) Decide(args *DecideArgs, reply *DecideReply) error {
 // is reached.
 //
 func (px *Paxos) Start(seq int, v interface{}) {
+	px.mu.Lock()
+	if seq < px.CurrentMinSeq {
+		px.mu.Unlock()
+		return
+	}
+	px.mu.Unlock()
 	// Your code here.
 	go func() {
 		decided := false
@@ -257,6 +294,22 @@ func (px *Paxos) Start(seq int, v interface{}) {
 	}()
 }
 
+func (px *Paxos) GetMaxDoneSeq(getMaxDoneSeqArgs *GetMaxDoneSeqArgs, getMaxDoneSeqReply *GetMaxDoneSeqReply) error {
+	px.mu.Lock()
+	getMaxDoneSeqReply.MaxDoneSeq = px.maxDoneSeq
+	px.mu.Unlock()
+	return nil
+}
+
+func (px *Paxos) UpdateCurrentMinSeq(updateCurrentMinSeqArgs *UpdateCurrentMinSeqArgs, updateCurrentMinSeqReply *UpdateCurrentMinSeqReply) error {
+	px.mu.Lock()
+	for ; px.CurrentMinSeq < updateCurrentMinSeqArgs.CurrentMinSeq; px.CurrentMinSeq += 1 {
+		delete(px.paxosInsts, px.CurrentMinSeq)
+	}
+	px.mu.Unlock()
+	return nil
+}
+
 //
 // the application on this machine is done with
 // all instances <= seq.
@@ -265,6 +318,11 @@ func (px *Paxos) Start(seq int, v interface{}) {
 //
 func (px *Paxos) Done(seq int) {
 	// Your code here.
+	px.mu.Lock()
+	if px.maxDoneSeq < seq {
+		px.maxDoneSeq = seq
+	}
+	px.mu.Unlock()
 }
 
 //
@@ -305,12 +363,32 @@ func (px *Paxos) Max() int {
 // even if all reachable peers call Done. The reason for
 // this is that when the unreachable peer comes back to
 // life, it will need to catch up on instances that it
-// missed -- the other peers therefor cannot forget these
+// missed -- the other peers therefore cannot forget these
 // instances.
 //
 func (px *Paxos) Min() int {
 	// You code here.
-	return 0
+	getMaxDoneSeqargs := &GetMaxDoneSeqArgs{}
+	px.mu.Lock()
+	minMaxDoneSeq := px.maxDoneSeq
+	px.mu.Unlock()
+	for _, peer := range px.peers {
+		var getMaxDoneSeqReply GetMaxDoneSeqReply
+		call(peer, "Paxos.GetMaxDoneSeq", getMaxDoneSeqargs, &getMaxDoneSeqReply)
+		if getMaxDoneSeqReply.MaxDoneSeq < minMaxDoneSeq {
+			minMaxDoneSeq = getMaxDoneSeqReply.MaxDoneSeq
+		}
+	}
+	updateCurrentMinSeqArgs := &UpdateCurrentMinSeqArgs{}
+	updateCurrentMinSeqArgs.CurrentMinSeq = minMaxDoneSeq + 1
+	for _, peer := range px.peers {
+		var updateCurrentMinSeqReply UpdateCurrentMinSeqReply
+		call(peer, "Paxos.UpdateCurrentMinSeq", updateCurrentMinSeqArgs, &updateCurrentMinSeqReply)
+	}
+	px.mu.Lock()
+	result := px.CurrentMinSeq
+	px.mu.Unlock()
+	return result
 }
 
 //
@@ -323,6 +401,9 @@ func (px *Paxos) Min() int {
 func (px *Paxos) Status(seq int) (Fate, interface{}) {
 	// Your code here.
 	paxosInst := px.GetPaxosInstance(seq)
+	if paxosInst == nil {
+		return Forgotten, nil
+	}
 	paxosInst.mu.Lock()
 	result := paxosInst.result
 	fate := paxosInst.fate
@@ -374,6 +455,8 @@ func Make(peers []string, me int, rpcs *rpc.Server) *Paxos {
 	px.me = me
 
 	// Your initialization code here.
+	px.maxDoneSeq = -1
+	px.CurrentMinSeq = 0
 	px.maxSeq = -1
 	px.paxosInsts = make(map[int]*PaxosInstance)
 
