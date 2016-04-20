@@ -22,16 +22,6 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 	return
 }
 
-type Op struct {
-	// Your definitions here.
-	// Field names must start with capital letters,
-	// otherwise RPC will break.
-	Name  string
-	Key   string
-	Value string
-	Id    int64
-}
-
 type KVPaxos struct {
 	mu         sync.Mutex
 	l          net.Listener
@@ -51,33 +41,37 @@ func (kv *KVPaxos) UpdateByPaxosLog() {
 	maxSeq := kv.px.Max()
 	for ; kv.seq+1 <= maxSeq; kv.seq++ {
 		_, v := kv.px.Status(kv.seq + 1)
-		op := v.(Op)
-		switch op.Name {
-		case "Get":
+		switch v.(type) {
+		case GetArgs:
+			args := v.(GetArgs)
 			reply := &GetReply{}
-			value, containsKey := kv.kv[op.Key]
+			value, containsKey := kv.kv[args.Key]
 			if containsKey {
 				reply.Err = OK
 				reply.Value = value
 			} else {
 				reply.Err = ErrNoKey
 			}
-			kv.idToReply[op.Id] = reply
-		case "Put":
-			kv.kv[op.Key] = op.Value
-			reply := &PutAppendReply{}
-			reply.Err = OK
-			kv.idToReply[op.Id] = reply
-		case "Append":
-			value, containsKey := kv.kv[op.Key]
-			if containsKey {
-				kv.kv[op.Key] = value + op.Value
-			} else {
-				kv.kv[op.Key] = op.Value
+			kv.idToReply[args.Id] = reply
+		case PutAppendArgs:
+			args := v.(PutAppendArgs)
+			switch args.Op {
+			case "Put":
+				kv.kv[args.Key] = args.Value
+				reply := &PutAppendReply{}
+				reply.Err = OK
+				kv.idToReply[args.Id] = reply
+			case "Append":
+				value, containsKey := kv.kv[args.Key]
+				if containsKey {
+					kv.kv[args.Key] = value + args.Value
+				} else {
+					kv.kv[args.Key] = args.Value
+				}
+				reply := &PutAppendReply{}
+				reply.Err = OK
+				kv.idToReply[args.Id] = reply
 			}
-			reply := &PutAppendReply{}
-			reply.Err = OK
-			kv.idToReply[op.Id] = reply
 		}
 	}
 	kv.px.Done(kv.seq)
@@ -94,7 +88,7 @@ func (kv *KVPaxos) FindReply(id int64) interface{} {
 	return result
 }
 
-func (kv *KVPaxos) HandleOp(op Op) {
+func (kv *KVPaxos) HandleOp(op interface{}) {
 	// It's possible that a kv server handles a bunch of Get and PutAppend requests.
 	// However, in order to reduce useless rpc connection, the program only allow
 	// only one request to start Paxos instance at a time.
@@ -121,12 +115,7 @@ func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
 		kv.UpdateByPaxosLog()
 		result := kv.FindReply(args.Id)
 		if result == nil {
-			op := Op{}
-			op.Id = args.Id
-			op.Name = "Get"
-			op.Key = args.Key
-			op.Value = ""
-			kv.HandleOp(op)
+			kv.HandleOp(*args)
 		} else {
 			reply.Err = result.(*GetReply).Err
 			reply.Value = result.(*GetReply).Value
@@ -142,12 +131,7 @@ func (kv *KVPaxos) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 		kv.UpdateByPaxosLog()
 		result := kv.FindReply(args.Id)
 		if result == nil {
-			op := Op{}
-			op.Id = args.Id
-			op.Name = args.Op
-			op.Key = args.Key
-			op.Value = args.Value
-			kv.HandleOp(op)
+			kv.HandleOp(*args)
 		} else {
 			reply.Err = result.(*PutAppendReply).Err
 			break
@@ -192,7 +176,8 @@ func (kv *KVPaxos) isunreliable() bool {
 func StartServer(servers []string, me int) *KVPaxos {
 	// call gob.Register on structures you want
 	// Go's RPC library to marshall/unmarshall.
-	gob.Register(Op{})
+	gob.Register(GetArgs{})
+	gob.Register(PutAppendArgs{})
 
 	kv := new(KVPaxos)
 	kv.me = me
