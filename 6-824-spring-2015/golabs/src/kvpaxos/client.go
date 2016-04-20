@@ -71,10 +71,10 @@ func (ck *Clerk) Get(key string) string {
 	// You will have to modify this function.
 	args := &GetArgs{}
 	args.Key = key
-	args.Id = nrand()
 	var reply GetReply
 	for ; ; ck.idx = (ck.idx + 1) % len(ck.servers) {
 		server := ck.servers[ck.idx]
+		args.Id = nrand()
 		if call(server, "KVPaxos.Get", args, &reply) {
 			break
 		}

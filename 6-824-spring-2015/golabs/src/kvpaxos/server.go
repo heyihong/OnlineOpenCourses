@@ -32,7 +32,7 @@ type KVPaxos struct {
 
 	// Your definitions here.
 	seq       int
-	idToReply map[int64]interface{}
+	idToValue map[int64]*string
 	kv        map[string]string
 }
 
@@ -44,23 +44,18 @@ func (kv *KVPaxos) UpdateByPaxosLog() {
 		switch v.(type) {
 		case GetArgs:
 			args := v.(GetArgs)
-			reply := &GetReply{}
 			value, containsKey := kv.kv[args.Key]
 			if containsKey {
-				reply.Err = OK
-				reply.Value = value
+				kv.idToValue[args.Id] = &value
 			} else {
-				reply.Err = ErrNoKey
+				kv.idToValue[args.Id] = nil
 			}
-			kv.idToReply[args.Id] = reply
 		case PutAppendArgs:
 			args := v.(PutAppendArgs)
 			switch args.Op {
 			case "Put":
 				kv.kv[args.Key] = args.Value
-				reply := &PutAppendReply{}
-				reply.Err = OK
-				kv.idToReply[args.Id] = reply
+				kv.idToValue[args.Id] = nil
 			case "Append":
 				value, containsKey := kv.kv[args.Key]
 				if containsKey {
@@ -68,24 +63,13 @@ func (kv *KVPaxos) UpdateByPaxosLog() {
 				} else {
 					kv.kv[args.Key] = args.Value
 				}
-				reply := &PutAppendReply{}
-				reply.Err = OK
-				kv.idToReply[args.Id] = reply
+				kv.idToValue[args.Id] = nil
 			}
 		}
+
 	}
 	kv.px.Done(kv.seq)
 	kv.mu.Unlock()
-}
-
-func (kv *KVPaxos) FindReply(id int64) interface{} {
-	kv.mu.Lock()
-	result, ok := kv.idToReply[id]
-	kv.mu.Unlock()
-	if !ok {
-		return nil
-	}
-	return result
 }
 
 func (kv *KVPaxos) HandleOp(op interface{}) {
@@ -113,15 +97,23 @@ func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
 	// Your code here.
 	for {
 		kv.UpdateByPaxosLog()
-		result := kv.FindReply(args.Id)
-		if result == nil {
+		kv.mu.Lock()
+		result, ok := kv.idToValue[args.Id]
+		kv.mu.Unlock()
+		if !ok {
 			kv.HandleOp(*args)
 		} else {
-			reply.Err = result.(*GetReply).Err
-			reply.Value = result.(*GetReply).Value
+			if result == nil {
+				reply.Err = ErrNoKey
+				reply.Value = ""
+			} else {
+				reply.Err = OK
+				reply.Value = *result
+			}
 			break
 		}
 	}
+	delete(kv.idToValue, args.Id)
 	return nil
 }
 
@@ -129,11 +121,13 @@ func (kv *KVPaxos) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 	// Your code here.
 	for {
 		kv.UpdateByPaxosLog()
-		result := kv.FindReply(args.Id)
-		if result == nil {
+		kv.mu.Lock()
+		_, ok := kv.idToValue[args.Id]
+		kv.mu.Unlock()
+		if !ok {
 			kv.HandleOp(*args)
 		} else {
-			reply.Err = result.(*PutAppendReply).Err
+			reply.Err = OK
 			break
 		}
 	}
@@ -184,7 +178,7 @@ func StartServer(servers []string, me int) *KVPaxos {
 
 	// Your initialization code here.
 	kv.seq = -1
-	kv.idToReply = make(map[int64]interface{})
+	kv.idToValue = make(map[int64]*string)
 	kv.kv = make(map[string]string)
 
 	rpcs := rpc.NewServer()
