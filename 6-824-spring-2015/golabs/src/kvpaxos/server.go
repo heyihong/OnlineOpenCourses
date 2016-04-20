@@ -4,14 +4,14 @@ import "net"
 import "fmt"
 import "net/rpc"
 import "log"
-import "paxos"
+import "../paxos"
 import "sync"
 import "sync/atomic"
 import "os"
 import "syscall"
 import "encoding/gob"
 import "math/rand"
-
+import "time"
 
 const Debug = 0
 
@@ -22,11 +22,14 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 	return
 }
 
-
 type Op struct {
 	// Your definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
+	Name  string
+	Key   string
+	Value string
+	Id    int64
 }
 
 type KVPaxos struct {
@@ -38,17 +41,118 @@ type KVPaxos struct {
 	px         *paxos.Paxos
 
 	// Your definitions here.
+	seq       int
+	idToReply map[int64]interface{}
+	kv        map[string]string
 }
 
+func (kv *KVPaxos) UpdateByPaxosLog() {
+	kv.mu.Lock()
+	maxSeq := kv.px.Max()
+	for ; kv.seq+1 <= maxSeq; kv.seq++ {
+		_, v := kv.px.Status(kv.seq + 1)
+		op := v.(Op)
+		switch op.Name {
+		case "Get":
+			reply := &GetReply{}
+			value, containsKey := kv.kv[op.Key]
+			if containsKey {
+				reply.Err = OK
+				reply.Value = value
+			} else {
+				reply.Err = ErrNoKey
+			}
+			kv.idToReply[op.Id] = reply
+		case "Put":
+			kv.kv[op.Key] = op.Value
+			reply := &PutAppendReply{}
+			reply.Err = OK
+			kv.idToReply[op.Id] = reply
+		case "Append":
+			value, containsKey := kv.kv[op.Key]
+			if containsKey {
+				kv.kv[op.Key] = value + op.Value
+			} else {
+				kv.kv[op.Key] = op.Value
+			}
+			reply := &PutAppendReply{}
+			reply.Err = OK
+			kv.idToReply[op.Id] = reply
+		}
+	}
+	kv.px.Done(kv.seq)
+	kv.mu.Unlock()
+}
+
+func (kv *KVPaxos) FindReply(id int64) interface{} {
+	kv.mu.Lock()
+	result, ok := kv.idToReply[id]
+	kv.mu.Unlock()
+	if !ok {
+		return nil
+	}
+	return result
+}
+
+func (kv *KVPaxos) HandleOp(op Op) {
+	// It's possible that a kv server handles a bunch of Get and PutAppend requests.
+	// However, in order to reduce useless rpc connection, the program only allow
+	// only one request to start Paxos instance at a time.
+	kv.mu.Lock()
+	availSeq := kv.seq + 1
+	kv.px.Start(availSeq, op)
+	to := 10 * time.Millisecond
+	for {
+		status, _ := kv.px.Status(availSeq)
+		if status == paxos.Decided {
+			kv.mu.Unlock()
+			return
+		}
+		time.Sleep(to)
+		if to < 10*time.Second {
+			to *= 2
+		}
+	}
+}
 
 func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
 	// Your code here.
+	for {
+		kv.UpdateByPaxosLog()
+		result := kv.FindReply(args.Id)
+		if result == nil {
+			op := Op{}
+			op.Id = args.Id
+			op.Name = "Get"
+			op.Key = args.Key
+			op.Value = ""
+			kv.HandleOp(op)
+		} else {
+			reply.Err = result.(*GetReply).Err
+			reply.Value = result.(*GetReply).Value
+			break
+		}
+	}
 	return nil
 }
 
 func (kv *KVPaxos) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 	// Your code here.
-
+	for {
+		kv.UpdateByPaxosLog()
+		result := kv.FindReply(args.Id)
+		if result == nil {
+			op := Op{}
+			op.Id = args.Id
+			op.Name = args.Op
+			op.Key = args.Key
+			op.Value = args.Value
+			kv.HandleOp(op)
+		} else {
+			reply.Err = result.(*PutAppendReply).Err
+			break
+		}
+	}
 	return nil
 }
 
@@ -94,6 +198,9 @@ func StartServer(servers []string, me int) *KVPaxos {
 	kv.me = me
 
 	// Your initialization code here.
+	kv.seq = -1
+	kv.idToReply = make(map[int64]interface{})
+	kv.kv = make(map[string]string)
 
 	rpcs := rpc.NewServer()
 	rpcs.Register(kv)
@@ -106,7 +213,6 @@ func StartServer(servers []string, me int) *KVPaxos {
 		log.Fatal("listen error: ", e)
 	}
 	kv.l = l
-
 
 	// please do not change any of the following code,
 	// or do anything to subvert it.

@@ -65,6 +65,7 @@ func TestBasic(t *testing.T) {
 	fmt.Printf("Test: Basic put/append/get ...\n")
 
 	ck.Append("app", "x")
+	fmt.Println("here")
 	ck.Append("app", "y")
 	check(t, ck, "app", "xy")
 
@@ -178,7 +179,7 @@ func TestDone(t *testing.T) {
 
 	// fmt.Printf("  Memory: before %v, after %v\n", m0.Alloc, m1.Alloc)
 
-	allowed := m0.Alloc + uint64(nservers*items*sz*2)
+	allowed := m0.Alloc + uint64(nservers*items*sz*3)
 	if m1.Alloc > allowed {
 		t.Fatalf("Memory use did not shrink enough (Used: %v, allowed: %v).\n", m1.Alloc, allowed)
 	}

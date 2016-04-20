@@ -60,7 +60,6 @@ type Paxos struct {
 }
 
 type PaxosInstance struct {
-	mu                    sync.Mutex
 	maxNumPrepare         int
 	maxNumAccept          int
 	valueWithMaxNumAccept interface{}
@@ -137,10 +136,9 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 	return false
 }
 
+// Not thread-safe
 func (px *Paxos) GetPaxosInstance(seq int) *PaxosInstance {
-	px.mu.Lock()
 	if seq < px.currentMinSeq {
-		px.mu.Unlock()
 		return nil
 	}
 	paxosInst, ok := px.paxosInsts[seq]
@@ -151,17 +149,17 @@ func (px *Paxos) GetPaxosInstance(seq int) *PaxosInstance {
 		paxosInst.fate = Pending
 		px.paxosInsts[seq] = paxosInst
 	}
-	px.mu.Unlock()
 	return paxosInst
 }
 
 func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
+	px.mu.Lock()
+	defer px.mu.Unlock()
 	paxosInst := px.GetPaxosInstance(args.Seq)
 	if paxosInst == nil {
 		reply.Ok = false
 		return nil
 	}
-	paxosInst.mu.Lock()
 	if args.Num > paxosInst.maxNumPrepare {
 		paxosInst.maxNumPrepare = args.Num
 		reply.Ok = true
@@ -171,17 +169,17 @@ func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
 	} else {
 		reply.Ok = false
 	}
-	paxosInst.mu.Unlock()
 	return nil
 }
 
 func (px *Paxos) Accept(args *AcceptArgs, reply *AcceptReply) error {
+	px.mu.Lock()
+	defer px.mu.Unlock()
 	paxosInst := px.GetPaxosInstance(args.Seq)
 	if paxosInst == nil {
 		reply.Ok = false
 		return nil
 	}
-	paxosInst.mu.Lock()
 	if args.Num >= paxosInst.maxNumPrepare {
 		paxosInst.maxNumPrepare = args.Num
 		paxosInst.maxNumAccept = args.Num
@@ -191,14 +189,22 @@ func (px *Paxos) Accept(args *AcceptArgs, reply *AcceptReply) error {
 	} else {
 		reply.Ok = false
 	}
-	paxosInst.mu.Unlock()
 	return nil
 }
 
 func (px *Paxos) Decide(args *DecideArgs, reply *DecideReply) error {
 	px.mu.Lock()
-	if px.maxSeq < args.Seq {
-		px.maxSeq = args.Seq
+	defer px.mu.Unlock()
+	paxosInst := px.GetPaxosInstance(args.Seq)
+	if paxosInst != nil && paxosInst.fate == Pending {
+		paxosInst.result = args.V
+		paxosInst.fate = Decided
+		for ; ; px.maxSeq += 1 {
+			paxosInst = px.GetPaxosInstance(px.maxSeq + 1)
+			if paxosInst.fate != Decided {
+				break
+			}
+		}
 	}
 	if px.maxDoneSeq[args.Decider] < args.MaxDoneSeq {
 		px.maxDoneSeq[args.Decider] = args.MaxDoneSeq
@@ -212,17 +218,6 @@ func (px *Paxos) Decide(args *DecideArgs, reply *DecideReply) error {
 	for ; px.currentMinSeq <= minMaxDoneSeq; px.currentMinSeq += 1 {
 		delete(px.paxosInsts, px.currentMinSeq)
 	}
-	px.mu.Unlock()
-	paxosInst := px.GetPaxosInstance(args.Seq)
-	if paxosInst == nil {
-		return nil
-	}
-	paxosInst.mu.Lock()
-	if paxosInst.fate == Pending {
-		paxosInst.result = args.V
-		paxosInst.fate = Decided
-	}
-	paxosInst.mu.Unlock()
 	return nil
 }
 
@@ -315,10 +310,10 @@ func (px *Paxos) Start(seq int, v interface{}) {
 func (px *Paxos) Done(seq int) {
 	// Your code here.
 	px.mu.Lock()
+	defer px.mu.Unlock()
 	if px.maxDoneSeq[px.me] < seq {
 		px.maxDoneSeq[px.me] = seq
 	}
-	px.mu.Unlock()
 }
 
 //
@@ -329,9 +324,8 @@ func (px *Paxos) Done(seq int) {
 func (px *Paxos) Max() int {
 	// Your code here.
 	px.mu.Lock()
-	result := px.maxSeq
-	px.mu.Unlock()
-	return result
+	defer px.mu.Unlock()
+	return px.maxSeq
 }
 
 //
@@ -365,8 +359,8 @@ func (px *Paxos) Max() int {
 func (px *Paxos) Min() int {
 	// You code here.
 	px.mu.Lock()
+	defer px.mu.Unlock()
 	result := px.currentMinSeq
-	px.mu.Unlock()
 	return result
 }
 
@@ -379,16 +373,13 @@ func (px *Paxos) Min() int {
 //
 func (px *Paxos) Status(seq int) (Fate, interface{}) {
 	// Your code here.
+	px.mu.Lock()
+	defer px.mu.Unlock()
 	paxosInst := px.GetPaxosInstance(seq)
 	if paxosInst == nil {
 		return Forgotten, nil
 	}
-	paxosInst.mu.Lock()
-	result := paxosInst.result
-	fate := paxosInst.fate
-	// fmt.Println(px.me, seq, result, fate)
-	paxosInst.mu.Unlock()
-	return fate, result
+	return paxosInst.fate, paxosInst.result
 }
 
 //
