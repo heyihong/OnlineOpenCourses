@@ -65,9 +65,9 @@ func TestBasic(t *testing.T) {
 	fmt.Printf("Test: Basic put/append/get ...\n")
 
 	ck.Append("app", "x")
-	fmt.Println("here")
 	ck.Append("app", "y")
 	check(t, ck, "app", "xy")
+	fmt.Println("here")
 
 	ck.Put("a", "aa")
 	check(t, ck, "a", "aa")
