@@ -3,6 +3,9 @@
 ;;; MIT 6.001                                    Spring, 2005
 ;;; PROJECT 4
 
+(load "objsys.scm")
+(load "objtypes.scm")
+
 ;;;========================================================================
 ;;; You can extend this file to extend your world.
 ;;;========================================================================
@@ -172,8 +175,44 @@
 ; (ask me 'go 'up)
 ; (ask me 'go 'down)
 ; (ask me 'go 'north)
-;
+
 ; (show me)
 ; (show screen)
 ; (show clock)
 ; (pp me)
+
+; Warmup Exercise 1
+; (ask me 'location) returns a place instance.
+; (type methods exits exit-towards add-exit things have-thing? add-thing del-thing is-a install destroy is-a)
+; can send to the object
+
+; Warmup Exercise 2
+; container extends root-object
+; thing extends name-object
+; mobile-thing extends thing
+; place exxtends named-object and container
+; exit extends named-object
+; person extends mobile-thing and container
+; autonomous-person extends person
+; hall-monitor extends autonomous-person
+; troll extends autonomous-person
+; spell extends mobile-thing
+; avatar extends person
+
+; Warmup Exercise 3
+; Places are defined in create-world method
+
+; Warmup Exercise 4
+; autonomous-person: '(ben-bitdiddle alyssa-hacker course-6-frosh lambda-man))
+; hall-monitor: '(dr-evil mr-bigglesworth)
+; troll: '(grendel registrar)
+; These characters are put randomly into the rooms,
+; while things and mobile things are put specifically
+; into the rooms.
+
+; Warmup Exercise 5
+; ...
+
+; Warmup Exercise 6
+; ...
+

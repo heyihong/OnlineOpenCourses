@@ -43,6 +43,12 @@
 ; procedure that it contains.
 ;
 
+; Rewrite memq since memq in my version of mit-scheme return #f when object is not in list
+(define (memq obj lis)
+        (cond ((null? lis) '())
+              ((eq? obj (car lis)) lis)
+              (else (memq obj (cdr lis)))))
+
 (define (make-instance)
   (list 'instance #f))
 
@@ -147,7 +153,7 @@
    (make-methods
     'IS-A
     (lambda (type)
-      (memq type (ask self 'TYPE))))))
+      (not (null? (memq type (ask self 'TYPE))))))))
 
 ;;------------------------------------------------------------
 ;; Object Interface
@@ -301,7 +307,7 @@
       (lambda ()
 	(set! removed-callbacks '())
 	(for-each (lambda (x) 
-		    (if (not (memq x removed-callbacks))
+		    (if (null? (memq x removed-callbacks))
 			(ask x 'activate)))
 		  (reverse callbacks))
 	(set! the-time (+ the-time 1)))
