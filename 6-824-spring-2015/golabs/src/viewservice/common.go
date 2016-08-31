@@ -39,25 +39,6 @@ type View struct {
 	Backup  string
 }
 
-func (v *View) ServerDied(server string) {
-	if v.Primary == server {
-		v.Primary = v.Backup
-		v.Backup = ""
-	} else if v.Backup == server {
-		v.Backup = ""
-	}
-}
-
-func (v *View) ServerAlive(server string) {
-	if server != v.Primary && server != v.Backup {
-		if v.Primary == "" {
-			v.Primary = server
-		} else if v.Backup == "" {
-			v.Backup = server
-		}
-	}
-}
-
 // clients should send a Ping RPC this often,
 // to tell the viewservice that the client is alive.
 const PingInterval = time.Millisecond * 100

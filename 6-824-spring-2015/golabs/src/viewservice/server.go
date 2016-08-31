@@ -8,7 +8,6 @@ import "sync"
 import "fmt"
 import "os"
 import "sync/atomic"
-import "errors"
 
 type ViewServer struct {
 	mu       sync.Mutex
@@ -18,10 +17,10 @@ type ViewServer struct {
 	me       string
 
 	// Your declarations here.
-	recentPing  map[string]time.Time
-	currentView View
-	nextView    View
-	isDown      bool
+	primaryPing   time.Time
+	backupPing    time.Time
+	currentView   View
+	isPrimayAcked bool
 }
 
 //
@@ -31,38 +30,38 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 
 	// Your code here.
 	vs.mu.Lock()
-	if vs.isDown {
-		vs.mu.Unlock()
-		return errors.New("PB service is down.")
-	}
-	_, ok := vs.recentPing[args.Me]
-	if args.Viewnum == 0 {
-		if ok {
-			// Server failed and restart
-			vs.nextView.ServerDied(args.Me)
-			vs.nextView.ServerAlive(args.Me)
-			if args.Me == vs.nextView.Primary {
-				vs.isDown = true
-				vs.mu.Unlock()
-				return errors.New("PB service is down.")
-			}
+	switch args.Me {
+	case vs.currentView.Primary:
+		if args.Viewnum == 0 && vs.isPrimayAcked {
+			// Primary crashed and rebooted
+			vs.currentView.Viewnum += 1
+			vs.currentView.Primary = vs.currentView.Backup
+			vs.primaryPing = vs.backupPing
+			vs.currentView.Backup = args.Me
+			vs.backupPing = time.Now()
+			vs.isPrimayAcked = false
 		} else {
-			vs.nextView.ServerAlive(args.Me)
+			vs.primaryPing = time.Now()
+			if args.Viewnum == vs.currentView.Viewnum {
+				vs.isPrimayAcked = true
+			}
 		}
-		if vs.nextView.Viewnum == 0 {
-			vs.nextView.Viewnum = 1
+	case vs.currentView.Backup:
+		vs.backupPing = time.Now()
+	default:
+		if vs.isPrimayAcked || vs.currentView.Viewnum == 0 {
+			if vs.currentView.Primary == "" {
+				vs.currentView.Viewnum += 1
+				vs.currentView.Primary = args.Me
+				vs.primaryPing = time.Now()
+				vs.isPrimayAcked = false
+			} else if vs.currentView.Backup == "" {
+				vs.currentView.Viewnum += 1
+				vs.currentView.Backup = args.Me
+				vs.backupPing = time.Now()
+				vs.isPrimayAcked = false
+			}
 		}
-	} else if args.Viewnum == vs.currentView.Viewnum && args.Viewnum == vs.nextView.Viewnum && args.Me == vs.currentView.Primary {
-		vs.nextView.Viewnum++
-	}
-	// WHen primary acked and some changes happened, nextView will replace currentView
-	if vs.currentView.Viewnum+1 == vs.nextView.Viewnum &&
-		(vs.currentView.Primary != vs.nextView.Primary || vs.currentView.Backup != vs.nextView.Backup) &&
-		(vs.currentView.Viewnum == 0 || vs.nextView.Primary == vs.currentView.Primary || vs.nextView.Primary == vs.currentView.Backup) {
-		vs.currentView = vs.nextView
-	}
-	if ok || args.Viewnum == 0 {
-		vs.recentPing[args.Me] = time.Now()
 	}
 	reply.View = vs.currentView
 	vs.mu.Unlock()
@@ -76,10 +75,6 @@ func (vs *ViewServer) Get(args *GetArgs, reply *GetReply) error {
 
 	// Your code here.
 	vs.mu.Lock()
-	if vs.isDown {
-		vs.mu.Unlock()
-		return errors.New("PB service is down.")
-	}
 	reply.View = vs.currentView
 	vs.mu.Unlock()
 	return nil
@@ -94,19 +89,19 @@ func (vs *ViewServer) tick() {
 
 	// Your code here.
 	vs.mu.Lock()
-	for key, value := range vs.recentPing {
-		du := time.Now().Sub(value)
-		if du > DeadPings*PingInterval {
-			delete(vs.recentPing, key)
-			vs.nextView.ServerDied(key)
-		} else {
-			vs.nextView.ServerAlive(key)
+	if vs.isPrimayAcked {
+		if time.Now().Sub(vs.primaryPing) > DeadPings*PingInterval {
+			vs.currentView.Viewnum += 1
+			vs.currentView.Primary = vs.currentView.Backup
+			vs.primaryPing = vs.backupPing
+			vs.currentView.Backup = ""
+			vs.isPrimayAcked = false
+		} else if vs.currentView.Backup != "" && time.Now().Sub(vs.backupPing) > DeadPings*PingInterval {
+			vs.currentView.Viewnum += 1
+			vs.currentView.Backup = ""
+			vs.isPrimayAcked = false
+
 		}
-	}
-	if vs.currentView.Viewnum+1 == vs.nextView.Viewnum &&
-		(vs.currentView.Primary != vs.nextView.Primary || vs.currentView.Backup != vs.nextView.Backup) &&
-		(vs.currentView.Viewnum == 0 || vs.nextView.Primary == vs.currentView.Primary || vs.nextView.Primary == vs.currentView.Backup) {
-		vs.currentView = vs.nextView
 	}
 	vs.mu.Unlock()
 }
@@ -137,8 +132,11 @@ func StartServer(me string) *ViewServer {
 	vs := new(ViewServer)
 	vs.me = me
 	// Your vs.* initializations here.
-	vs.recentPing = make(map[string]time.Time)
-	vs.isDown = false
+	vs.currentView = View{
+		Viewnum: 0,
+		Primary: "",
+		Backup:  ""}
+	vs.isPrimayAcked = false
 	// tell net/rpc about our RPC server and handlers.
 	rpcs := rpc.NewServer()
 	rpcs.Register(vs)

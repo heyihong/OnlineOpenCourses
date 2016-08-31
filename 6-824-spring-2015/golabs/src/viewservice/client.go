@@ -59,23 +59,14 @@ func (ck *Clerk) Ping(viewnum uint) (View, error) {
 	args.Me = ck.me
 	args.Viewnum = viewnum
 	var reply PingReply
-
-	// send an RPC request, wait for the reply.
-	ok := call(ck.server, "ViewServer.Ping", args, &reply)
-	if ok == false {
-		return View{}, fmt.Errorf("Ping(%v) failed", viewnum)
-	}
-
+	call(ck.server, "ViewServer.Ping", args, &reply)
 	return reply.View, nil
 }
 
 func (ck *Clerk) Get() (View, bool) {
 	args := &GetArgs{}
 	var reply GetReply
-	ok := call(ck.server, "ViewServer.Get", args, &reply)
-	if ok == false {
-		return View{}, false
-	}
+	call(ck.server, "ViewServer.Get", args, &reply)
 	return reply.View, true
 }
 
