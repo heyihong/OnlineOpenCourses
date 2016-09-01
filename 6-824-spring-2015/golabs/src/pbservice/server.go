@@ -22,7 +22,6 @@ type PBServer struct {
 	// Your declarations here.
 
 	kv                 map[string]string
-	idToGetReply       map[int64]GetReply
 	idToPutAppendReply map[int64]PutAppendReply
 
 	currentView viewservice.View
@@ -30,10 +29,17 @@ type PBServer struct {
 
 func (pb *PBServer) Transfer(args *TransferArgs, reply *TransferReply) error {
 	pb.mu.Lock()
-	pb.kv = args.KeyValueMap
-	pb.idToGetReply = args.IdToGetReply
-	pb.idToPutAppendReply = args.IdToPutAppendReply
-	reply.Err = OK
+	if pb.currentView.Backup == pb.me {
+		for key, value := range args.KeyValueMap {
+			pb.kv[key] = value
+		}
+		for key, value := range args.IdToPutAppendReply {
+			pb.idToPutAppendReply[key] = value
+		}
+		reply.Err = OK
+	} else {
+		reply.Err = ErrWrongServer
+	}
 	pb.mu.Unlock()
 	return nil
 }
@@ -43,17 +49,11 @@ func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 	// Your code here.
 	pb.mu.Lock()
 	if pb.currentView.Primary == pb.me {
-		getReply, containsId := pb.idToGetReply[args.Id]
-		if containsId {
-			reply.Value, reply.Err = getReply.Value, getReply.Err
+		value, containsKey := pb.kv[args.Key]
+		if containsKey {
+			reply.Value, reply.Err = value, OK
 		} else {
-			value, containsKey := pb.kv[args.Key]
-			if containsKey {
-				reply.Value, reply.Err = value, OK
-			} else {
-				reply.Value, reply.Err = "", ErrNoKey
-			}
-			pb.idToGetReply[args.Id] = *reply
+			reply.Value, reply.Err = "", ErrNoKey
 		}
 	} else {
 		reply.Err = ErrWrongServer
@@ -66,30 +66,32 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 
 	// Your code here.
 	pb.mu.Lock()
-	if pb.currentView.Primary == pb.me || args.IsBackup {
+	if pb.currentView.Primary == pb.me {
 		putAppendReply, containsId := pb.idToPutAppendReply[args.Id]
 		if containsId {
 			reply.Err = putAppendReply.Err
 		} else {
-			ok := true
-			if !args.IsBackup {
-				args.IsBackup = true
-				if pb.currentView.Primary == pb.me && pb.currentView.Backup != "" {
-					var backupReply PutAppendReply
-					ok = call(pb.currentView.Backup, "PBServer.PutAppend", args, &backupReply)
+			var newValue string
+			if args.Op == "Put" {
+				newValue = args.Value
+			} else if args.Op == "Append" {
+				value, containsKey := pb.kv[args.Key]
+				if containsKey {
+					newValue = value + args.Value
+				} else {
+					newValue = args.Value
 				}
 			}
+			ok := true
+			if pb.currentView.Primary == pb.me && pb.currentView.Backup != "" {
+				transferArgs := TransferArgs{
+					KeyValueMap:        map[string]string{args.Key: newValue},
+					IdToPutAppendReply: map[int64]PutAppendReply{args.Id: PutAppendReply{Err: OK}}}
+				var transferReply TransferReply
+				ok = call(pb.currentView.Backup, "PBServer.Transfer", transferArgs, &transferReply)
+			}
 			if ok {
-				if args.Op == "Put" {
-					pb.kv[args.Key] = args.Value
-				} else if args.Op == "Append" {
-					value, containsKey := pb.kv[args.Key]
-					if containsKey {
-						pb.kv[args.Key] = value + args.Value
-					} else {
-						pb.kv[args.Key] = args.Value
-					}
-				}
+				pb.kv[args.Key] = newValue
 				reply.Err = OK
 				pb.idToPutAppendReply[args.Id] = *reply
 			} else {
@@ -116,7 +118,6 @@ func (pb *PBServer) tick() {
 	if pb.me == view.Primary && pb.currentView.Backup != view.Backup {
 		args := &TransferArgs{}
 		args.KeyValueMap = pb.kv
-		args.IdToGetReply = pb.idToGetReply
 		args.IdToPutAppendReply = pb.idToPutAppendReply
 		var reply TransferReply
 		call(view.Backup, "PBServer.Transfer", args, &reply)
@@ -156,7 +157,6 @@ func StartServer(vshost string, me string) *PBServer {
 	pb.vs = viewservice.MakeClerk(me, vshost)
 	// Your pb.* initializations here.
 	pb.kv = make(map[string]string)
-	pb.idToGetReply = make(map[int64]GetReply)
 	pb.idToPutAppendReply = make(map[int64]PutAppendReply)
 
 	rpcs := rpc.NewServer()

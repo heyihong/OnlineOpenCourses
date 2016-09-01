@@ -6,6 +6,7 @@ import "fmt"
 
 import "crypto/rand"
 import "math/big"
+import "time"
 
 type Clerk struct {
 	vs *viewservice.Clerk
@@ -74,7 +75,6 @@ func (ck *Clerk) Get(key string) string {
 	// Your code here.
 	args := &GetArgs{}
 	args.Key = key
-	args.Id = nrand()
 	var value string
 	for true {
 		var reply GetReply
@@ -89,6 +89,7 @@ func (ck *Clerk) Get(key string) string {
 			}
 			break
 		}
+		time.Sleep(viewservice.PingInterval)
 	}
 	return value
 }
@@ -111,6 +112,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		} else {
 			break
 		}
+		time.Sleep(viewservice.PingInterval)
 	}
 }
 

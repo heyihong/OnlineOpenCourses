@@ -15,8 +15,7 @@ type PutAppendArgs struct {
 	Value string
 	Op    string
 	// You'll have to add definitions here.
-	Id       int64
-	IsBackup bool
+	Id int64
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
 }
@@ -28,7 +27,6 @@ type PutAppendReply struct {
 type GetArgs struct {
 	Key string
 	// You'll have to add definitions here.
-	Id int64
 }
 
 type GetReply struct {
@@ -40,7 +38,6 @@ type GetReply struct {
 
 type TransferArgs struct {
 	KeyValueMap        map[string]string
-	IdToGetReply       map[int64]GetReply
 	IdToPutAppendReply map[int64]PutAppendReply
 }
 
