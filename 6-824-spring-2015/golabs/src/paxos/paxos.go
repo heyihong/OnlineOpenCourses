@@ -55,7 +55,6 @@ type Paxos struct {
 
 	// Your data here.
 	maxSeq     int
-	curSeq     int
 	minDoneSeq int
 	doneSeq    []int
 	paxosInsts map[int]*PaxosInstance
@@ -238,7 +237,7 @@ func (px *Paxos) Start(seq int, v interface{}) {
 				Num: num}
 			numOk := 0
 			numAccept := -1
-			var accpetValue interface{}
+			acceptValue := v
 			for _, peer := range px.peers {
 				var reply PrepareReply
 				call(peer, "Paxos.Prepare", prepareArgs, &reply)
@@ -246,7 +245,7 @@ func (px *Paxos) Start(seq int, v interface{}) {
 					numOk += 1
 					if numAccept < reply.NumAccept {
 						numAccept = reply.NumAccept
-						accpetValue = reply.Value
+						acceptValue = reply.Value
 					}
 					if numOk*2 > len(px.peers) {
 						break
@@ -257,7 +256,7 @@ func (px *Paxos) Start(seq int, v interface{}) {
 				acceptArgs := &AcceptArgs{
 					Seq:   seq,
 					Num:   num,
-					Value: accpetValue}
+					Value: acceptValue}
 				numOk = 0
 				for _, peer := range px.peers {
 					var reply AcceptReply
@@ -270,6 +269,8 @@ func (px *Paxos) Start(seq int, v interface{}) {
 					}
 				}
 				if numOk*2 > len(px.peers) {
+					// px.doneSeq[px.me] is not protected by a lock, but it seems to be ok.
+					// Maybe it's read-only
 					decideArgs := &DecideArgs{
 						Seq:     seq,
 						Value:   acceptArgs.Value,
@@ -416,7 +417,6 @@ func Make(peers []string, me int, rpcs *rpc.Server) *Paxos {
 	px.me = me
 
 	// Your initialization code here.
-	px.curSeq = 0
 	px.maxSeq = -1
 	px.minDoneSeq = -1
 	px.paxosInsts = make(map[int]*PaxosInstance)
