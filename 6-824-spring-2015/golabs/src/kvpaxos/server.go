@@ -69,7 +69,7 @@ func (kv *KVPaxos) ExecutePaxosLog() {
 func (kv *KVPaxos) HandleOp(op interface{}) interface{} {
 	// It's possible that a kv server handles a bunch of Get and PutAppend requests.
 	// However, in order to reduce useless rpc connection, the program only allow
-	// only one request to start Paxos instance at a time.
+	// one request to start Paxos instance at a time.
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
 	availSeq := kv.seq + 1

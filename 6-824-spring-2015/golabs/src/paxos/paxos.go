@@ -230,6 +230,7 @@ func (px *Paxos) Start(seq int, v interface{}) {
 	// Your code here.
 	go func() {
 		num := px.me
+		duration := 10
 		for ; ; num += len(px.peers) {
 			prepareArgs := &PrepareArgs{
 				Seq: seq,
@@ -288,7 +289,10 @@ func (px *Paxos) Start(seq int, v interface{}) {
 				}
 			}
 			// Wait random time for next proposal
-			time.Sleep(time.Millisecond * time.Duration(rand.Int()%100))
+			time.Sleep(time.Millisecond * time.Duration(rand.Int()%duration))
+			if duration < 10*10000*1000 {
+				duration *= 2
+			}
 		}
 	}()
 }
