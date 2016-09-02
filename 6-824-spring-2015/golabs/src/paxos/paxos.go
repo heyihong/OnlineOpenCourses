@@ -147,9 +147,6 @@ func (px *Paxos) GetPaxosInstWithDefault(seq int) *PaxosInstance {
 			numAccept:  -1,
 			fate:       Pending}
 		px.paxosInsts[seq] = paxosInst
-		if px.maxSeq < seq {
-			px.maxSeq = seq
-		}
 	}
 	return paxosInst
 }
@@ -217,6 +214,8 @@ func (px *Paxos) Decide(args *DecideArgs, reply *DecideReply) error {
 	for ; px.minDoneSeq < minDoneSeq; px.minDoneSeq += 1 {
 		delete(px.paxosInsts, px.minDoneSeq+1)
 	}
+	for ; px.GetPaxosInstWithDefault(px.maxSeq+1).fate == Decided; px.maxSeq += 1 {
+	}
 	return nil
 }
 
@@ -270,7 +269,7 @@ func (px *Paxos) Start(seq int, v interface{}) {
 				}
 				if numOk*2 > len(px.peers) {
 					// px.doneSeq[px.me] is not protected by a lock, but it seems to be ok.
-					// Maybe it's read-only
+					// Maybe because it's read-only
 					decideArgs := &DecideArgs{
 						Seq:     seq,
 						Value:   acceptArgs.Value,
@@ -289,7 +288,7 @@ func (px *Paxos) Start(seq int, v interface{}) {
 				}
 			}
 			// Wait random time for next proposal
-			time.Sleep(time.Millisecond * time.Duration(rand.Int()%1000))
+			time.Sleep(time.Millisecond * time.Duration(rand.Int()%100))
 		}
 	}()
 }
