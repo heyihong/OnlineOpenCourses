@@ -1,7 +1,7 @@
 package diskv
 
 import "testing"
-import "shardmaster"
+import "../shardmaster"
 import "runtime"
 import "strconv"
 import "strings"

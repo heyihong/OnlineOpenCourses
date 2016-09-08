@@ -1,6 +1,6 @@
 package diskv
 
-import "shardmaster"
+import "../shardmaster"
 import "net/rpc"
 import "time"
 import "sync"
@@ -125,19 +125,20 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 
 	// You'll have to modify PutAppend().
 
+	id := nrand()
 	for {
 		shard := key2shard(key)
 
 		gid := ck.config.Shards[shard]
 
 		servers, ok := ck.config.Groups[gid]
-
 		if ok {
 			// try each server in the shard's replication group.
 			for _, srv := range servers {
 				args := &PutAppendArgs{}
 				args.Key = key
 				args.Value = value
+				args.Id = id
 				args.Op = op
 				var reply PutAppendReply
 				ok := call(srv, "DisKV.PutAppend", args, &reply)

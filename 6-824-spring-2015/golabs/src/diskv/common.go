@@ -24,7 +24,7 @@ type PutAppendArgs struct {
 	// You'll have to add definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
-
+	Id int64
 }
 
 type PutAppendReply struct {
@@ -41,3 +41,21 @@ type GetReply struct {
 	Value string
 }
 
+type MoveInArgs struct {
+	ConfigNum int
+	ShardId   int
+	Shard     map[string]string
+	Reply     map[int64]PutAppendReply
+}
+
+type MoveInReply struct {
+}
+
+type MoveOutArgs struct {
+	ShardId   int
+	ConfigNum int
+	Servers   []string
+}
+
+type MoveOutReply struct {
+}
