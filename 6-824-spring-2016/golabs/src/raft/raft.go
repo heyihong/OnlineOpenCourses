@@ -190,6 +190,7 @@ func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here.
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	defer rf.persist()
 	rf.updateTerm(args.Term)
 	reply.Term = rf.currentTerm
 	lastLogIndex := len(rf.log) - 1
@@ -203,6 +204,7 @@ func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
 func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	defer rf.persist()
 	rf.updateTerm(args.Term)
 	reply.Term = rf.currentTerm
 	reply.Success = false
@@ -250,12 +252,18 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 // the struct itself.
 //
 func (rf *Raft) sendRequestVote(server int, args RequestVoteArgs, reply *RequestVoteReply) bool {
+	rf.mu.Lock()
+	rf.persist()
+	rf.mu.Unlock()
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
 	DPrintf("%s %d sent request vote args %v to %d, ok = %t, reply %v\n", rf.serverState, rf.me, args, server, ok, *reply)
 	return ok
 }
 
 func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *AppendEntriesReply) bool {
+	rf.mu.Lock()
+	rf.persist()
+	rf.mu.Unlock()
 	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
 	if len(args.Entries) > 0 {
 		DPrintf("%s %d sent append entries args %v to %d, ok = %t, reply %v\n", rf.serverState, rf.me, args, server, ok, *reply)
@@ -356,6 +364,7 @@ func (rf *Raft) syncLogs(server int, term int) {
 	var reply AppendEntriesReply
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	missedLen := 1
 	for rf.currentTerm == term {
 		if rf.nextIndex[server] < len(rf.log) {
 			args = AppendEntriesArgs{
@@ -378,7 +387,13 @@ func (rf *Raft) syncLogs(server int, term int) {
 					rf.matchIndex[server] = rf.nextIndex[server] - 1
 					rf.updateCommitIndex()
 				} else {
-					rf.nextIndex[server]--
+					// find out next index in O(logN) time
+					// next index should always be >= 1
+					rf.nextIndex[server] -= missedLen
+					missedLen *= 2
+					if missedLen > rf.nextIndex[server]-1 {
+						missedLen = rf.nextIndex[server] - 1
+					}
 				}
 			}
 		} else {
