@@ -1,11 +1,12 @@
 package raftkv
 
 import (
+	"../labrpc"
+	"../raft"
 	"encoding/gob"
-	"labrpc"
 	"log"
-	"raft"
 	"sync"
+	"time"
 )
 
 const Debug = 0
@@ -17,11 +18,12 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 	return
 }
 
-
 type Op struct {
 	// Your definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
+	NoOp bool
+	Val  interface{}
 }
 
 type RaftKV struct {
@@ -33,15 +35,89 @@ type RaftKV struct {
 	maxraftstate int // snapshot if log grows this big
 
 	// Your definitions here.
+	clientIdToSeq map[int64]int
+	kv            map[string]string
+	appliedIndex  int
 }
 
+func (kv *RaftKV) waitForApplied(op Op) bool {
+	index, term, ok := kv.rf.Start(op)
+	if !ok {
+		return false
+	}
+	sleepTime := 10 * time.Millisecond
+	for {
+		currentTerm, isLeader := kv.rf.GetState()
+		if term != currentTerm || !isLeader {
+			return false
+		}
+		kv.mu.Lock()
+		if index <= kv.appliedIndex {
+			kv.mu.Unlock()
+			return true
+		}
+		kv.mu.Unlock()
+		time.Sleep(sleepTime)
+		if sleepTime < 10*time.Second {
+			sleepTime *= 2
+		}
+	}
+}
+
+func (kv *RaftKV) apply() {
+	for {
+		msg := <-kv.applyCh
+		kv.mu.Lock()
+		op := msg.Command.(Op)
+		DPrintf("Msg: %v\n", msg)
+		if !op.NoOp {
+			switch op.Val.(type) {
+			case PutAppendArgs:
+				args := op.Val.(PutAppendArgs)
+				if kv.clientIdToSeq[args.ClientId]+1 == args.SeqNum {
+					value, hasKey := kv.kv[args.Key]
+					if hasKey && args.Op == "Append" {
+						value += args.Value
+					} else {
+						value = args.Value
+					}
+					kv.kv[args.Key] = value
+					DPrintf("%s -> %v\n", args.Key, value)
+					kv.clientIdToSeq[args.ClientId]++
+				}
+			}
+		}
+		kv.appliedIndex = msg.Index
+		kv.mu.Unlock()
+	}
+}
 
 func (kv *RaftKV) Get(args *GetArgs, reply *GetReply) {
 	// Your code here.
+	op := Op{NoOp: true}
+	ok := kv.waitForApplied(op)
+	reply.WrongLeader = !ok
+	if ok {
+		kv.mu.Lock()
+		value, hasKey := kv.kv[args.Key]
+		if hasKey {
+			reply.Err = OK
+			reply.Value = value
+		} else {
+			reply.Err = ErrNoKey
+		}
+		kv.mu.Unlock()
+	}
+	DPrintf("%d args = %v, reply = %v\n", kv.me, args, *reply)
 }
 
 func (kv *RaftKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	// Your code here.
+	op := Op{
+		NoOp: false,
+		Val:  *args}
+	reply.WrongLeader = !kv.waitForApplied(op)
+	DPrintf("%d args = %v, reply = %v\n", kv.me, *args, *reply)
 }
 
 //
@@ -72,6 +148,8 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	// call gob.Register on structures you want
 	// Go's RPC library to marshall/unmarshall.
 	gob.Register(Op{})
+	gob.Register(PutAppendArgs{})
+	gob.Register(GetArgs{})
 
 	kv := new(RaftKV)
 	kv.me = me
@@ -81,7 +159,9 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
-
-
+	kv.clientIdToSeq = make(map[int64]int)
+	kv.kv = make(map[string]string)
+	kv.appliedIndex = 0
+	go kv.apply()
 	return kv
 }
