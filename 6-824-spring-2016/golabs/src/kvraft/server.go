@@ -3,6 +3,7 @@ package raftkv
 import (
 	"../labrpc"
 	"../raft"
+	"bytes"
 	"encoding/gob"
 	"log"
 	"sync"
@@ -27,10 +28,11 @@ type Op struct {
 }
 
 type RaftKV struct {
-	mu      sync.Mutex
-	me      int
-	rf      *raft.Raft
-	applyCh chan raft.ApplyMsg
+	mu        sync.Mutex
+	persister *raft.Persister
+	me        int
+	rf        *raft.Raft
+	applyCh   chan raft.ApplyMsg
 
 	maxraftstate int // snapshot if log grows this big
 
@@ -38,6 +40,24 @@ type RaftKV struct {
 	clientIdToSeq map[int64]int
 	kv            map[string]string
 	appliedIndex  int
+}
+
+func (kv *RaftKV) snapshot() {
+	w := new(bytes.Buffer)
+	e := gob.NewEncoder(w)
+	e.Encode(kv.appliedIndex)
+	e.Encode(kv.kv)
+	e.Encode(kv.clientIdToSeq)
+	data := w.Bytes()
+	kv.persister.SaveSnapshot(data)
+}
+
+func (kv *RaftKV) readSnapshot(data []byte) {
+	r := bytes.NewBuffer(data)
+	d := gob.NewDecoder(r)
+	d.Decode(&kv.appliedIndex)
+	d.Decode(&kv.kv)
+	d.Decode(&kv.clientIdToSeq)
 }
 
 func (kv *RaftKV) waitForApplied(op Op) bool {
@@ -68,11 +88,13 @@ func (kv *RaftKV) apply() {
 	for {
 		msg := <-kv.applyCh
 		kv.mu.Lock()
-		op := msg.Command.(Op)
-		DPrintf("Msg: %v\n", msg)
-		if !op.NoOp {
-			switch op.Val.(type) {
-			case PutAppendArgs:
+		DPrintf("Server %d is applying msg %v\n", kv.me, msg)
+		if msg.UseSnapshot {
+			kv.readSnapshot(msg.Snapshot)
+			DPrintf("Server %d used snapshot (index = %d, snapshot size = %d, raft state size = %d)\n", kv.me, msg.Index, len(msg.Snapshot), len(kv.persister.ReadRaftState()))
+		} else {
+			op := msg.Command.(Op)
+			if !op.NoOp {
 				args := op.Val.(PutAppendArgs)
 				if kv.clientIdToSeq[args.ClientId]+1 == args.SeqNum {
 					value, hasKey := kv.kv[args.Key]
@@ -82,12 +104,16 @@ func (kv *RaftKV) apply() {
 						value = args.Value
 					}
 					kv.kv[args.Key] = value
-					DPrintf("%s -> %v\n", args.Key, value)
 					kv.clientIdToSeq[args.ClientId]++
 				}
 			}
+			if kv.maxraftstate != -1 && kv.persister.RaftStateSize() > kv.maxraftstate {
+				kv.snapshot()
+				kv.rf.Snapshot(msg.Index)
+				DPrintf("Server %d make a snapshot (index = %d, snapshot size = %d, raft state size = %d)\n", kv.me, msg.Index, len(kv.persister.ReadSnapshot()), len(kv.persister.ReadRaftState()))
+			}
+			kv.appliedIndex = msg.Index
 		}
-		kv.appliedIndex = msg.Index
 		kv.mu.Unlock()
 	}
 }
@@ -108,7 +134,7 @@ func (kv *RaftKV) Get(args *GetArgs, reply *GetReply) {
 		}
 		kv.mu.Unlock()
 	}
-	DPrintf("%d args = %v, reply = %v\n", kv.me, args, *reply)
+	//DPrintf("%d args = %v, reply = %v\n", kv.me, args, *reply)
 }
 
 func (kv *RaftKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
@@ -117,7 +143,7 @@ func (kv *RaftKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		NoOp: false,
 		Val:  *args}
 	reply.WrongLeader = !kv.waitForApplied(op)
-	DPrintf("%d args = %v, reply = %v\n", kv.me, *args, *reply)
+	//DPrintf("%d args = %v, reply = %v\n", kv.me, *args, *reply)
 }
 
 //
@@ -153,15 +179,21 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 
 	kv := new(RaftKV)
 	kv.me = me
+	kv.persister = persister
 	kv.maxraftstate = maxraftstate
-
 	// Your initialization code here.
+	kv.appliedIndex = 0
+	kv.clientIdToSeq = make(map[int64]int)
+	kv.kv = make(map[string]string)
 
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
-	kv.clientIdToSeq = make(map[int64]int)
-	kv.kv = make(map[string]string)
-	kv.appliedIndex = 0
+
+	kv.readSnapshot(persister.ReadSnapshot())
+	kv.rf.Snapshot(kv.appliedIndex)
+	DPrintf("Server %d recovered from a snapshot (index = %d, snapshot size = %d, raft state size = %d)\n", kv.me, kv.appliedIndex, len(persister.ReadSnapshot()), len(persister.ReadRaftState()))
+
 	go kv.apply()
+
 	return kv
 }
