@@ -4,7 +4,7 @@ package shardmaster
 // Shardmaster clerk.
 //
 
-import "labrpc"
+import "../labrpc"
 import "time"
 import "crypto/rand"
 import "math/big"
@@ -67,7 +67,6 @@ func (ck *Clerk) Leave(gids []int) {
 	args := &LeaveArgs{}
 	// Your code here.
 	args.GIDs = gids
-
 	for {
 		// try each known server.
 		for _, srv := range ck.servers {
