@@ -278,7 +278,7 @@ func (rf *Raft) InstallSnapshot(args InstallSnapshotArgs, reply *InstallSnapshot
 	}
 	go func() {
 		rf.applyCh <- ApplyMsg{
-			Index:       args.LastIncludedIndex,
+			Index:       -1,
 			UseSnapshot: true,
 			Snapshot:    args.Data}
 	}()

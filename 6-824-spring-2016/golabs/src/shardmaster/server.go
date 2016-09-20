@@ -91,18 +91,20 @@ func (sm *ShardMaster) waitForApplied(op Op) bool {
 		return false
 	}
 	sleepTime := 10 * time.Millisecond
+	defer sm.mu.Unlock()
 	for {
+		sm.mu.Lock()
 		currentTerm, isLeader := sm.rf.GetState()
 		if currentTerm != term || !isLeader {
 			return false
 		}
-		sm.mu.Lock()
 		if index <= sm.appliedIndex {
-			sm.mu.Unlock()
 			return true
 		}
 		sm.mu.Unlock()
-		sleepTime *= 2
+		if sleepTime < 10*time.Second {
+			sleepTime *= 2
+		}
 	}
 }
 

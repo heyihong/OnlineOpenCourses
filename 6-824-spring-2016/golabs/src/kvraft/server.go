@@ -66,14 +66,14 @@ func (kv *RaftKV) waitForApplied(op Op) bool {
 		return false
 	}
 	sleepTime := 10 * time.Millisecond
+	defer kv.mu.Unlock()
 	for {
+		kv.mu.Lock()
 		currentTerm, isLeader := kv.rf.GetState()
 		if term != currentTerm || !isLeader {
 			return false
 		}
-		kv.mu.Lock()
 		if index <= kv.appliedIndex {
-			kv.mu.Unlock()
 			return true
 		}
 		kv.mu.Unlock()
@@ -91,6 +91,7 @@ func (kv *RaftKV) apply() {
 		DPrintf("Server %d is applying msg %v\n", kv.me, msg)
 		if msg.UseSnapshot {
 			kv.readSnapshot(msg.Snapshot)
+			kv.rf.Snapshot(kv.appliedIndex)
 			DPrintf("Server %d used snapshot (index = %d, snapshot size = %d, raft state size = %d)\n", kv.me, msg.Index, len(msg.Snapshot), len(kv.persister.ReadRaftState()))
 		} else {
 			op := msg.Command.(Op)
@@ -107,12 +108,12 @@ func (kv *RaftKV) apply() {
 					kv.clientIdToSeq[args.ClientId]++
 				}
 			}
-			if kv.maxraftstate != -1 && kv.persister.RaftStateSize() > kv.maxraftstate {
+			kv.appliedIndex = msg.Index
+			if kv.maxraftstate != -1 && kv.persister.RaftStateSize() >= kv.maxraftstate {
 				kv.snapshot()
-				kv.rf.Snapshot(msg.Index)
+				kv.rf.Snapshot(kv.appliedIndex)
 				DPrintf("Server %d make a snapshot (index = %d, snapshot size = %d, raft state size = %d)\n", kv.me, msg.Index, len(kv.persister.ReadSnapshot()), len(kv.persister.ReadRaftState()))
 			}
-			kv.appliedIndex = msg.Index
 		}
 		kv.mu.Unlock()
 	}
