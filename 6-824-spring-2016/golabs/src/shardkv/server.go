@@ -35,6 +35,7 @@ type ShardKV struct {
 	rf           *raft.Raft
 	applyCh      chan raft.ApplyMsg
 	make_end     func(string) *labrpc.ClientEnd
+	mck          *shardmaster.Clerk
 	gid          int
 	maxraftstate int // snapshot if log grows this big
 
@@ -45,13 +46,12 @@ type ShardKV struct {
 	appliedIndex        int
 	configNums          [shardmaster.NShards]int
 	isAvailable         [shardmaster.NShards]bool
-	moveOutArgs         [shardmaster.NShards]MoveOutArgs
+	transfer            [shardmaster.NShards]Transfer
 	kvShards            [shardmaster.NShards]map[string]string
 	clientIdToSeqShards [shardmaster.NShards]map[int64]int
 
-	// Volatile state on leader
-	config      shardmaster.Config
-	firstConfig shardmaster.Config
+	// Volatile state
+	isTransferring [shardmaster.NShards]bool
 }
 
 func (kv *ShardKV) snapshot() {
@@ -60,7 +60,7 @@ func (kv *ShardKV) snapshot() {
 	e.Encode(kv.configNums)
 	e.Encode(kv.appliedIndex)
 	e.Encode(kv.isAvailable)
-	e.Encode(kv.moveOutArgs)
+	e.Encode(kv.transfer)
 	e.Encode(kv.kvShards)
 	e.Encode(kv.clientIdToSeqShards)
 	kv.persister.SaveSnapshot(w.Bytes())
@@ -72,7 +72,7 @@ func (kv *ShardKV) readSnapshot(data []byte) {
 	d.Decode(&kv.configNums)
 	d.Decode(&kv.appliedIndex)
 	d.Decode(&kv.isAvailable)
-	d.Decode(&kv.moveOutArgs)
+	d.Decode(&kv.transfer)
 	d.Decode(&kv.kvShards)
 	d.Decode(&kv.clientIdToSeqShards)
 }
@@ -134,11 +134,25 @@ func (kv *ShardKV) apply() {
 						kv.clientIdToSeqShards[args.ShardId] = args.ClientIdToSeq
 						kv.isAvailable[args.ShardId] = args.IsAvailable
 					}
-				case MoveOutArgs:
-					args := op.Val.(MoveOutArgs)
-					if kv.isAvailable[args.ShardId] && args.ConfigNum > kv.configNums[args.ShardId] {
-						kv.isAvailable[args.ShardId] = false
-						kv.moveOutArgs[args.ShardId] = args
+				case ReConfigArgs:
+					args := op.Val.(ReConfigArgs)
+					config := args.Config
+					if config.Num == 1 {
+						for shardId := 0; shardId < shardmaster.NShards; shardId++ {
+							if kv.configNums[shardId] == 0 && config.Shards[shardId] == kv.gid {
+								kv.configNums[shardId] = 1
+								kv.isAvailable[shardId] = true
+							}
+						}
+					} else {
+						for shardId := 0; shardId < shardmaster.NShards; shardId++ {
+							if config.Num > kv.configNums[shardId] && kv.isAvailable[shardId] && config.Shards[shardId] != kv.gid {
+								kv.isAvailable[shardId] = false
+								kv.transfer[shardId] = Transfer{
+									ConfigNum: config.Num,
+									Servers:   config.Groups[config.Shards[shardId]]}
+							}
+						}
 					}
 				}
 			}
@@ -205,6 +219,26 @@ func (kv *ShardKV) MoveIn(args *MoveInArgs, reply *MoveInReply) {
 	reply.WrongLeader = !ok
 }
 
+func (kv *ShardKV) transferShard(transfer Transfer, args MoveInArgs) {
+	for idx := 0; ; idx = (idx + 1) % len(transfer.Servers) {
+		var reply MoveInReply
+		srv := kv.make_end(transfer.Servers[idx])
+		if srv.Call("ShardKV.MoveIn", &args, &reply) && !reply.WrongLeader {
+			break
+		}
+	}
+	args.IsAvailable = false
+	args.Kv = make(map[string]string)
+	args.ClientIdToSeq = make(map[int64]int)
+	op := Op{
+		NoOp: false,
+		Val:  args}
+	kv.waitForApplied(op)
+	kv.mu.Lock()
+	kv.isTransferring[args.ShardId] = false
+	kv.mu.Unlock()
+}
+
 //
 // the tester calls Kill() when a ShardKV instance won't
 // be needed again. you are not required to do anything
@@ -216,77 +250,40 @@ func (kv *ShardKV) Kill() {
 	// Your code here, if desired.
 }
 
-func (kv *ShardKV) updateConfig(sm *shardmaster.Clerk) {
+func (kv *ShardKV) tick() {
+	config := shardmaster.Config{Num: 0}
 	for {
 		_, isLeader := kv.rf.GetState()
 		if isLeader {
-			newConfig := sm.Query(-1)
+			newConfig := kv.mck.Query(-1)
+			if newConfig.Num > config.Num {
+				if config.Num == 0 {
+					config = kv.mck.Query(1)
+				} else {
+					config = newConfig
+				}
+				op := Op{
+					NoOp: false,
+					Val:  ReConfigArgs{Config: config}}
+				kv.waitForApplied(op)
+			}
 			kv.mu.Lock()
-			kv.config = newConfig
-			if kv.firstConfig.Num == 0 && newConfig.Num > 0 {
-				kv.firstConfig = sm.Query(1)
+			for shardId := 0; shardId < shardmaster.NShards; shardId++ {
+				if kv.configNums[shardId] < kv.transfer[shardId].ConfigNum && !kv.isTransferring[shardId] {
+					kv.isTransferring[shardId] = true
+					transfer := kv.transfer[shardId]
+					moveInArgs := MoveInArgs{
+						ShardId:       shardId,
+						ConfigNum:     transfer.ConfigNum,
+						IsAvailable:   true,
+						Kv:            kv.kvShards[shardId],
+						ClientIdToSeq: kv.clientIdToSeqShards[shardId]}
+					go kv.transferShard(transfer, moveInArgs)
+				}
 			}
 			kv.mu.Unlock()
 		}
-		time.Sleep(500 * time.Millisecond)
-	}
-}
-
-func (kv *ShardKV) manageShard(shardId int) {
-	for {
-		_, isLeader := kv.rf.GetState()
-		if isLeader {
-			kv.mu.Lock()
-			if kv.moveOutArgs[shardId].ConfigNum > kv.configNums[shardId] {
-				moveOutArgs := kv.moveOutArgs[shardId]
-				moveInArgs := MoveInArgs{
-					ShardId:       shardId,
-					ConfigNum:     moveOutArgs.ConfigNum,
-					IsAvailable:   true,
-					Kv:            kv.kvShards[shardId],
-					ClientIdToSeq: kv.clientIdToSeqShards[shardId]}
-				kv.mu.Unlock()
-				for idx := 0; ; idx = (idx + 1) % len(moveOutArgs.Servers) {
-					var moveInReply MoveInReply
-					srv := kv.make_end(moveOutArgs.Servers[idx])
-					if srv.Call("ShardKV.MoveIn", &moveInArgs, &moveInReply) && !moveInReply.WrongLeader {
-						moveInArgs.IsAvailable = false
-						moveInArgs.Kv = make(map[string]string)
-						moveInArgs.ClientIdToSeq = make(map[int64]int)
-						kv.MoveIn(&moveInArgs, &moveInReply)
-						break
-					}
-				}
-			} else if kv.config.Num > kv.configNums[shardId] {
-				op := Op{NoOp: true}
-				if kv.configNums[shardId] == 0 {
-					args := MoveInArgs{
-						ShardId:       shardId,
-						ConfigNum:     1,
-						IsAvailable:   kv.firstConfig.Shards[shardId] == kv.gid,
-						Kv:            make(map[string]string),
-						ClientIdToSeq: make(map[int64]int)}
-					op = Op{
-						NoOp: false,
-						Val:  args}
-				} else if kv.isAvailable[shardId] && kv.config.Shards[shardId] != kv.gid {
-					args := MoveOutArgs{
-						ConfigNum: kv.config.Num,
-						ShardId:   shardId,
-						Servers:   kv.config.Groups[kv.config.Shards[shardId]]}
-					op = Op{
-						NoOp: false,
-						Val:  args}
-				}
-				kv.mu.Unlock()
-				if !op.NoOp {
-					kv.waitForApplied(op)
-				}
-			} else {
-				kv.mu.Unlock()
-			}
-		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 
@@ -325,7 +322,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	gob.Register(PutAppendArgs{})
 	gob.Register(GetArgs{})
 	gob.Register(MoveInArgs{})
-	gob.Register(MoveOutArgs{})
+	gob.Register(ReConfigArgs{})
 
 	kv := new(ShardKV)
 	kv.me = me
@@ -339,13 +336,15 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	for shardId := 0; shardId < shardmaster.NShards; shardId++ {
 		kv.isAvailable[shardId] = false
 		kv.configNums[shardId] = 0
-		kv.moveOutArgs[shardId].ConfigNum = 0
+		kv.transfer[shardId].ConfigNum = 0
 		kv.kvShards[shardId] = make(map[string]string)
 		kv.clientIdToSeqShards[shardId] = make(map[int64]int)
+
+		kv.isTransferring[shardId] = false
 	}
 
 	// Use something like this to talk to the shardmaster:
-	// kv.mck = shardmaster.MakeClerk(kv.masters)
+	kv.mck = shardmaster.MakeClerk(masters)
 
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
@@ -355,11 +354,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 
 	DPrintf("Server (%d, %d) recovered to %v %v\n", kv.gid, kv.me, kv.kvShards, kv.clientIdToSeqShards)
 
-	go kv.updateConfig(shardmaster.MakeClerk(masters))
-
-	for shardId := 0; shardId < shardmaster.NShards; shardId++ {
-		go kv.manageShard(shardId)
-	}
+	go kv.tick()
 
 	go kv.apply()
 
