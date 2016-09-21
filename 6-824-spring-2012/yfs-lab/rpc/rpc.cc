@@ -662,8 +662,31 @@ rpcs::checkduplicate_and_update(unsigned int clt_nonce, unsigned int xid,
 		unsigned int xid_rep, char **b, int *sz)
 {
 	ScopedLock rwl(&reply_window_m_);
-
-        // You fill this in for Lab 1.
+    // You fill this in for Lab 1.
+	std::list<reply_t>& replies = reply_window_[clt_nonce];
+	std::list<reply_t>::iterator iter = replies.begin();
+	unsigned int& rep_done = xid_rep_done_[clt_nonce];
+	if (rep_done < xid_rep) {
+		rep_done = xid_rep;
+		while (iter != replies.end() && iter->xid <= xid_rep){
+			iter++;
+			replies.pop_front(); 
+		}
+	}
+	if (xid < rep_done) {
+		return FORGOTTEN;
+	}
+	for (; iter != replies.end() && xid >= iter->xid; iter++) {
+		if (xid == iter->xid) {
+			if (!iter->cb_present) {
+				return INPROGRESS;
+			}
+			*b = iter->buf;
+			*sz = iter->sz;
+			return DONE;
+		}
+	}
+	replies.insert(iter, reply_t(xid));
 	return NEW;
 }
 
@@ -677,7 +700,17 @@ rpcs::add_reply(unsigned int clt_nonce, unsigned int xid,
 		char *b, int sz)
 {
 	ScopedLock rwl(&reply_window_m_);
-        // You fill this in for Lab 1.
+    // You fill this in for Lab 1.
+	std::list<reply_t>& replies = reply_window_[clt_nonce];
+	std::list<reply_t>::iterator iter = replies.begin();
+	for (; iter != replies.end(); iter++) {
+		if (iter->xid == xid) {
+			iter->buf = b;
+			iter->sz = sz;
+			iter->cb_present = true;
+			return;
+		}
+	}
 }
 
 void

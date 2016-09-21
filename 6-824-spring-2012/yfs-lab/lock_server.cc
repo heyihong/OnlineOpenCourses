@@ -9,6 +9,8 @@
 lock_server::lock_server():
   nacquire (0)
 {
+	pthread_mutex_init(&mu, NULL);
+   	pthread_cond_init(&cond, NULL);
 }
 
 lock_protocol::status
@@ -20,4 +22,27 @@ lock_server::stat(int clt, lock_protocol::lockid_t lid, int &r)
   return ret;
 }
 
+lock_protocol::status
+lock_server::acquire(int clt, lock_protocol::lockid_t lid, int &r)
+{
+	pthread_mutex_lock(&mu);
+	bool& is_locked = locks[lid];
+	while (is_locked) {
+		pthread_cond_wait(&cond, &mu);	
+	}
+	is_locked = true;
+	pthread_mutex_unlock(&mu);
+	lock_protocol::status ret = lock_protocol::OK;
+	return ret;	
+}
 
+lock_protocol::status
+lock_server::release(int clt, lock_protocol::lockid_t lid, int &r)
+{
+	pthread_mutex_lock(&mu);
+	locks[lid] = false;
+	pthread_mutex_unlock(&mu);
+	pthread_cond_broadcast(&cond);	
+	lock_protocol::status ret = lock_protocol::OK;
+	return ret;	
+}
