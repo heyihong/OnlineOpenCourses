@@ -69,6 +69,8 @@ type Raft struct {
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
 
+	appliedCond *sync.Cond
+
 	// Persistent state on all servers
 	currentTerm       int
 	votedFor          int
@@ -258,6 +260,7 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 			if rf.commitIndex > args.LeaderCommit {
 				rf.commitIndex = args.LeaderCommit
 			}
+			rf.appliedCond.Signal()
 		}
 	}
 }
@@ -467,6 +470,7 @@ func (rf *Raft) syncLogs(server int, term int) {
 						sort.Ints(midx)
 						if midx[len(rf.peers)/2] > rf.commitIndex {
 							rf.commitIndex = midx[len(rf.peers)/2]
+							rf.appliedCond.Signal()
 						}
 					} else if rf.nextIndex[server] > rf.lastIncludedIndex {
 						if rf.nextIndex[server] == rf.lastIncludedIndex+1 {
@@ -548,6 +552,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.me = me
 
 	// Your initialization code here.
+	rf.appliedCond = sync.NewCond(&rf.mu)
+
 	rf.applyCh = applyCh
 	rf.currentTerm = 0
 	rf.votedFor = 0
@@ -568,8 +574,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	go rf.elect()
 
 	go func() {
+		rf.mu.Lock()
 		for {
-			rf.mu.Lock()
 			for rf.lastApplied+1 <= rf.commitIndex {
 				logEntry := rf.log[rf.lastApplied+1-rf.lastIncludedIndex]
 				applyMsg := ApplyMsg{
@@ -580,8 +586,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 				rf.applyCh <- applyMsg
 				rf.mu.Lock()
 			}
-			rf.mu.Unlock()
-			time.Sleep(SyncInterval)
+			rf.appliedCond.Wait()
 		}
 	}()
 
