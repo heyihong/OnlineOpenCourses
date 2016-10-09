@@ -6,12 +6,18 @@ package simpledb;
  */
 public class RecordId {
 
+    private PageId pid;
+
+    private int tupleno;
+
     /** Creates a new RecordId refering to the specified PageId and tuple number.
      * @param pid the pageid of the page on which the tuple resides
      * @param tupleno the tuple number within the page.
      */
     public RecordId(PageId pid, int tupleno) {
         // some code goes here
+        this.pid = pid;
+        this.tupleno = tupleno;
     }
 
     /**
@@ -19,7 +25,7 @@ public class RecordId {
      */
     public int tupleno() {
         // some code goes here
-        return 0;
+        return this.tupleno;
     }
 
     /**
@@ -27,7 +33,7 @@ public class RecordId {
      */
     public PageId getPageId() {
         // some code goes here
-        return null;
+        return this.pid;
     }
     
     /**
@@ -37,7 +43,11 @@ public class RecordId {
     @Override
     public boolean equals(Object o) {
     	// some code goes here
-    	throw new UnsupportedOperationException("implement this");
+        if (!(o instanceof RecordId)) {
+            return false;
+        }
+        RecordId id = (RecordId)o;
+        return id.pid.equals(this.pid) && id.tupleno == this.tupleno;
     }
     
     /**
@@ -48,8 +58,7 @@ public class RecordId {
     @Override
     public int hashCode() {
     	// some code goes here
-    	throw new UnsupportedOperationException("implement this");
-    	
+        return this.pid.hashCode() * 31 + this.tupleno;
     }
     
 }

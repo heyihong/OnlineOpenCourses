@@ -1,4 +1,5 @@
 package simpledb;
+import javax.xml.crypto.Data;
 import java.util.*;
 
 /**
@@ -7,6 +8,14 @@ import java.util.*;
  * disk).
  */
 public class SeqScan implements DbIterator {
+
+    private TransactionId tid;
+
+    private int tableid;
+
+    private String tableAlias;
+
+    private DbFileIterator dbFileItr;
 
     /**
      * Creates a sequential scan over the specified table as a part of the
@@ -22,11 +31,16 @@ public class SeqScan implements DbIterator {
      */
     public SeqScan(TransactionId tid, int tableid, String tableAlias) {
         // some code goes here
+        this.tid = tid;
+        this.tableid = tableid;
+        this.tableAlias = tableAlias;
+        this.dbFileItr = Database.getCatalog().getDbFile(this.tableid).iterator(tid);
     }
 
     public void open()
         throws DbException, TransactionAbortedException {
         // some code goes here
+        this.dbFileItr.open();
     }
 
     /**
@@ -37,26 +51,28 @@ public class SeqScan implements DbIterator {
      */
     public TupleDesc getTupleDesc() {
         // some code goes here
-        return null;
+        return Database.getCatalog().getTupleDesc(this.tableid);
     }
 
     public boolean hasNext() throws TransactionAbortedException, DbException {
         // some code goes here
-        return false;
+        return dbFileItr.hasNext();
     }
 
     public Tuple next()
         throws NoSuchElementException, TransactionAbortedException, DbException {
         // some code goes here
-        return null;
+        return dbFileItr.next();
     }
 
     public void close() {
         // some code goes here
+        dbFileItr.close();
     }
 
     public void rewind()
         throws DbException, NoSuchElementException, TransactionAbortedException {
         // some code goes here
+        dbFileItr.rewind();
     }
 }

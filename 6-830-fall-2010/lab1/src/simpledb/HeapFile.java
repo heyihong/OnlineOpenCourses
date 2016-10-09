@@ -1,6 +1,7 @@
 package simpledb;
 
 import java.io.*;
+import java.nio.Buffer;
 import java.util.*;
 
 /**
@@ -15,6 +16,10 @@ import java.util.*;
  */
 public class HeapFile implements DbFile {
 
+    private File file;
+
+    private TupleDesc td;
+
     /**
      * Constructs a heap file backed by the specified file.
      *
@@ -22,6 +27,8 @@ public class HeapFile implements DbFile {
      */
     public HeapFile(File f, TupleDesc td) {
         // some code goes here
+        this.file = f;
+        this.td = td;
     }
 
     /**
@@ -31,7 +38,7 @@ public class HeapFile implements DbFile {
      */
     public File getFile() {
         // some code goes here
-        return null;
+        return this.file;
     }
 
     /**
@@ -45,7 +52,7 @@ public class HeapFile implements DbFile {
     */
     public int getId() {
         // some code goes here
-        throw new UnsupportedOperationException("implement this");
+        return this.file.getAbsoluteFile().hashCode();
     }
     
     /**
@@ -54,13 +61,27 @@ public class HeapFile implements DbFile {
      */
     public TupleDesc getTupleDesc() {
     	// some code goes here
-    	throw new UnsupportedOperationException("implement this");
+        return this.td;
     }
 
     // see DbFile.java for javadocs
     public Page readPage(PageId pid) {
         // some code goes here
-        return null;
+        if (pid.pageno() < 0 || pid.pageno() >= this.numPages()) {
+            throw new IllegalArgumentException();
+        }
+        Page page = null;
+        try {
+            FileInputStream fis = new FileInputStream(this.file);
+            fis.skip(BufferPool.PAGE_SIZE * pid.pageno());
+            byte[] data = HeapPage.createEmptyPageData();
+            if (fis.read(data) == BufferPool.PAGE_SIZE) {
+                page = new HeapPage(new HeapPageId(this.getId(), pid.pageno()), data);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return page;
     }
 
     // see DbFile.java for javadocs
@@ -74,7 +95,7 @@ public class HeapFile implements DbFile {
      */
     public int numPages() {
         // some code goes here
-        return 0;
+        return (int)(this.file.length() / BufferPool.PAGE_SIZE);
     }
 
     // see DbFile.java for javadocs
@@ -96,7 +117,58 @@ public class HeapFile implements DbFile {
     // see DbFile.java for javadocs
     public DbFileIterator iterator(TransactionId tid) {
         // some code goes here
-        return null;
+        return new HeapFileItr();
+    }
+
+    private class HeapFileItr implements DbFileIterator {
+
+        private int pageno;
+
+        private Iterator<Tuple> tupleItr;
+
+        private void findNext() throws DbException, TransactionAbortedException {
+            PageId id;
+            while (this.tupleItr != null && !this.tupleItr.hasNext()) {
+                ++this.pageno;
+                id = new HeapPageId(getId(), this.pageno);
+                this.tupleItr = numPages() == this.pageno ? null:
+                        ((HeapPage) Database.getBufferPool().getPage(null, id, null)).iterator();
+            }
+        }
+
+        @Override
+        public void open() throws DbException, TransactionAbortedException {
+            this.rewind();
+        }
+
+        @Override
+        public boolean hasNext() throws DbException, TransactionAbortedException {
+            return tupleItr != null;
+        }
+
+        @Override
+        public Tuple next() throws DbException, TransactionAbortedException, NoSuchElementException {
+            if (tupleItr == null) {
+                throw new NoSuchElementException();
+            }
+            Tuple res = this.tupleItr.next();
+            this.findNext();
+            return res;
+        }
+
+        @Override
+        public void rewind() throws DbException, TransactionAbortedException {
+            this.pageno = 0;
+            PageId id = new HeapPageId(getId(), 0);
+            this.tupleItr = numPages() == 0 ? null :
+                    ((HeapPage) Database.getBufferPool().getPage(null, id, null)).iterator();
+            this.findNext();
+        }
+
+        @Override
+        public void close() {
+            tupleItr = null;
+        }
     }
     
 }

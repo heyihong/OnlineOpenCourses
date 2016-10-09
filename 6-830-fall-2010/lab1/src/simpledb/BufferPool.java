@@ -1,6 +1,11 @@
 package simpledb;
 
+import javax.xml.crypto.Data;
 import java.io.*;
+import java.util.LinkedHashMap;
+import java.util.LinkedList;
+import java.util.Map;
+
 /**
  * BufferPool manages the reading and writing of pages into memory from
  * disk. Access methods call into it to retrieve pages, and it fetches
@@ -19,6 +24,10 @@ public class BufferPool {
     constructor instead. */
     public static final int DEFAULT_PAGES = 50;
 
+    private int numPages;
+
+    private LinkedHashMap<PageId, Page> pages;
+
     /**
      * Creates a BufferPool that caches up to numPages pages.
      *
@@ -26,6 +35,8 @@ public class BufferPool {
      */
     public BufferPool(int numPages) {
         // some code goes here
+        this.numPages = numPages;
+        this.pages = new LinkedHashMap<PageId, Page>();
     }
 
     /**
@@ -43,10 +54,22 @@ public class BufferPool {
      * @param pid the ID of the requested page
      * @param perm the requested permissions on the page
      */
-    public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
+    public Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
         // some code goes here
-        return null;
+        Page page = pages.get(pid);
+        if (page == null) {
+            DbFile file = Database.getCatalog().getDbFile(pid.getTableId());
+            page = file.readPage(pid);
+            if (pages.size() == this.numPages) {
+                PageId oldPid = pages.keySet().iterator().next();
+                pages.remove(oldPid);
+            }
+        } else {
+            pages.remove(pid);
+        }
+        pages.put(pid, page);
+        return page;
     }
 
     /**

@@ -65,7 +65,7 @@ public class HeapPage implements Page {
     */
     private int getNumTuples() {        
         // some code goes here
-        return 0;
+        return (BufferPool.PAGE_SIZE*8) / (this.td.getSize() * 8 + 1);
 
     }
 
@@ -76,7 +76,7 @@ public class HeapPage implements Page {
     private int getHeaderSize() {        
         
         // some code goes here
-        return 0;
+        return (this.numSlots + 7) / 8;
                  
     }
     
@@ -102,7 +102,7 @@ public class HeapPage implements Page {
      */
     public HeapPageId getId() {
     // some code goes here
-    throw new UnsupportedOperationException("implement this");
+        return this.pid;
     }
 
     /**
@@ -273,7 +273,13 @@ public class HeapPage implements Page {
      */
     public int getNumEmptySlots() {
         // some code goes here
-        return 0;
+        int res = 0;
+        for (int i = 0; i != this.numSlots; ++i) {
+            if (!getSlot(i)) {
+                ++res;
+            }
+        }
+        return res;
     }
 
     /**
@@ -281,7 +287,7 @@ public class HeapPage implements Page {
      */
     public boolean getSlot(int i) {
         // some code goes here
-        return false;
+        return (this.header[i >> 3] & (1 << (i & 7))) > 0;
     }
 
     /**
@@ -298,7 +304,28 @@ public class HeapPage implements Page {
      */
     public Iterator<Tuple> iterator() {
         // some code goes here
-        return null;
+        return new TupleItr();
+    }
+
+    private class TupleItr implements Iterator<Tuple> {
+        private int i;
+
+        {
+            this.i = 0;
+            for (; this.i < numSlots && !getSlot(this.i); ++this.i);
+        }
+
+        @Override
+        public boolean hasNext() {
+            return this.i < numSlots;
+        }
+
+        @Override
+        public Tuple next() {
+            Tuple tup = tuples[this.i];
+            for (++this.i; this.i < numSlots && !getSlot(this.i); ++this.i);
+            return tup;
+        }
     }
 
 }

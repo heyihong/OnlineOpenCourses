@@ -6,6 +6,12 @@ import java.util.*;
  */
 public class TupleDesc {
 
+    private Type[] typeAr;
+
+    private String[] fieldAr;
+
+    private int size;
+
     /**
      * Merge two TupleDescs into one, with td1.numFields + td2.numFields
      * fields, with the first td1.numFields coming from td1 and the remaining
@@ -16,7 +22,13 @@ public class TupleDesc {
      */
     public static TupleDesc combine(TupleDesc td1, TupleDesc td2) {
         // some code goes here
-        return null;
+        Type[] typeAr = new Type[td1.typeAr.length + td2.typeAr.length];
+        String[] fieldAr = new String[td1.fieldAr.length + td2.fieldAr.length];
+        System.arraycopy(td1.typeAr, 0, typeAr, 0, td1.typeAr.length);
+        System.arraycopy(td2.typeAr, 0, typeAr,td1.typeAr.length, td2.typeAr.length);
+        System.arraycopy(td1.fieldAr, 0, fieldAr, 0, td1.fieldAr.length);
+        System.arraycopy(td2.fieldAr, 0, fieldAr, td1.fieldAr.length, td2.fieldAr.length);
+        return new TupleDesc(typeAr, fieldAr);
     }
 
     /**
@@ -29,6 +41,9 @@ public class TupleDesc {
      */
     public TupleDesc(Type[] typeAr, String[] fieldAr) {
         // some code goes here
+        this.typeAr = typeAr;
+        this.fieldAr = fieldAr;
+        this.size = 0;
     }
 
     /**
@@ -41,6 +56,9 @@ public class TupleDesc {
      */
     public TupleDesc(Type[] typeAr) {
         // some code goes here
+        this.typeAr = Arrays.copyOf(typeAr, typeAr.length);
+        this.fieldAr = new String[typeAr.length];
+        this.size = 0;
     }
 
     /**
@@ -48,7 +66,7 @@ public class TupleDesc {
      */
     public int numFields() {
         // some code goes here
-        return 0;
+        return this.fieldAr.length;
     }
 
     /**
@@ -60,7 +78,10 @@ public class TupleDesc {
      */
     public String getFieldName(int i) throws NoSuchElementException {
         // some code goes here
-        return null;
+        if (i < 0 || i >= this.fieldAr.length) {
+            throw new NoSuchElementException();
+        }
+        return this.fieldAr[i];
     }
 
     /**
@@ -72,7 +93,14 @@ public class TupleDesc {
      */
     public int nameToId(String name) throws NoSuchElementException {
         // some code goes here
-        return 0;
+        if (name != null) {
+            for (int i = 0; i != this.fieldAr.length; ++i) {
+                if (name.equals(this.fieldAr[i])) {
+                    return i;
+                }
+            }
+        }
+        throw new NoSuchElementException();
     }
 
     /**
@@ -84,7 +112,10 @@ public class TupleDesc {
      */
     public Type getType(int i) throws NoSuchElementException {
         // some code goes here
-        return null;
+        if (i < 0 || i >= this.typeAr.length) {
+            throw new NoSuchElementException();
+        }
+        return this.typeAr[i];
     }
 
     /**
@@ -93,7 +124,12 @@ public class TupleDesc {
      */
     public int getSize() {
         // some code goes here
-        return 0;
+        if (this.size == 0) {
+            for (int i = 0 ; i != this.typeAr.length; ++i) {
+                this.size += this.typeAr[i].getLen();
+            }
+        }
+        return this.size;
     }
 
     /**
@@ -106,7 +142,19 @@ public class TupleDesc {
      */
     public boolean equals(Object o) {
         // some code goes here
-        return false;
+        if (!(o instanceof TupleDesc)) {
+            return false;
+        }
+        TupleDesc td = (TupleDesc)o;
+        if (td.typeAr.length != this.typeAr.length) {
+            return false;
+        }
+        for (int i = 0; i != this.typeAr.length; ++i) {
+            if (td.typeAr[i] != this.typeAr[i]) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public int hashCode() {
