@@ -4,6 +4,12 @@ package simpledb;
  */
 public class Predicate {
 
+    private int field;
+
+    private Op op;
+
+    private Field operand;
+
     /** Constants used for return codes in Field.compare */
     public enum Op {
         EQUALS, GREATER_THAN, LESS_THAN, LESS_THAN_OR_EQ, GREATER_THAN_OR_EQ, LIKE, NOT_EQUALS;
@@ -38,6 +44,9 @@ public class Predicate {
      */
     public Predicate(int field, Op op, Field operand) {
         // some code goes here
+        this.field = field;
+        this.op = op;
+        this.operand = operand;
     }
 
     /**
@@ -51,7 +60,7 @@ public class Predicate {
      */
     public boolean filter(Tuple t) {
         // some code goes here
-        return false;
+        return t.getField(this.field).compare(this.op, this.operand);
     }
 
     /**
@@ -60,6 +69,6 @@ public class Predicate {
      */
     public String toString() {
         // some code goes here
-        return "";
+        return "f = " + this.field + " op = " + this.op + " operand = " + this.operand;
     }
 }

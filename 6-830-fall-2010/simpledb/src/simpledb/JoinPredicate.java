@@ -6,6 +6,10 @@ package simpledb;
  */
 public class JoinPredicate {
 
+    private int field1;
+    private Predicate.Op op;
+    private int field2;
+
     /**
      * Constructor -- create a new predicate over two fields of two tuples.
      *
@@ -18,6 +22,9 @@ public class JoinPredicate {
      */
     public JoinPredicate(int field1, Predicate.Op op, int field2) {
         // some code goes here
+        this.field1 = field1;
+        this.op = op;
+        this.field2 = field2;
     }
 
     /**
@@ -27,6 +34,6 @@ public class JoinPredicate {
      */
     public boolean filter(Tuple t1, Tuple t2) {
         // some code goes here
-        return false;
+        return t1.getField(this.field1).compare(this.op, t2.getField(this.field2));
     }
 }

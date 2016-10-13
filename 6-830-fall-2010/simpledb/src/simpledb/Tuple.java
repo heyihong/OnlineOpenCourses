@@ -83,6 +83,14 @@ public class Tuple {
      */
     public String toString() {
         // some code goes here
-        throw new UnsupportedOperationException("Implement this");
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i != fields.length; ++i) {
+            if (i > 0) {
+                builder.append(" ");
+            }
+            builder.append(fields[i].toString());
+        }
+        builder.append("\n");
+        return builder.toString();
     }
 }

@@ -6,6 +6,20 @@ import java.util.*;
  */
 public class Join extends AbstractDbIterator {
 
+    private JoinPredicate p;
+
+    private DbIterator child1;
+
+    private DbIterator child2;
+
+    private Tuple tuple1;
+
+    private TupleDesc tupleDesc;
+
+    private int numField1;
+
+    private int numField2;
+
     /**
      * Constructor.  Accepts to children to join and the predicate
      * to join them on
@@ -16,6 +30,12 @@ public class Join extends AbstractDbIterator {
      */
     public Join(JoinPredicate p, DbIterator child1, DbIterator child2) {
         // some code goes here
+        this.p = p;
+        this.child1 = child1;
+        this.child2 = child2;
+        this.numField1 = child1.getTupleDesc().numFields();
+        this.numField2 = child2.getTupleDesc().numFields();
+        this.tupleDesc = TupleDesc.combine(this.child1.getTupleDesc(), this.child2.getTupleDesc());
     }
 
     /**
@@ -23,20 +43,28 @@ public class Join extends AbstractDbIterator {
      */
     public TupleDesc getTupleDesc() {
         // some code goes here
-        return null;
+        return this.tupleDesc;
     }
 
     public void open()
         throws DbException, NoSuchElementException, TransactionAbortedException {
         // some code goes here
+        this.child1.open();
+        this.child2.open();
+        this.tuple1 = this.child1.hasNext() ? this.child1.next() : null;
     }
 
     public void close() {
         // some code goes here
+        child1.close();
+        child2.close();
     }
 
     public void rewind() throws DbException, TransactionAbortedException {
         // some code goes here
+        child1.rewind();
+        child2.rewind();
+        this.tuple1 = this.child1.hasNext() ? this.child1.next() : null;
     }
 
     /**
@@ -60,6 +88,24 @@ public class Join extends AbstractDbIterator {
      */
     protected Tuple readNext() throws TransactionAbortedException, DbException {
         // some code goes here
+        while (this.tuple1 != null) {
+            Tuple tuple2;
+            while (this.child2.hasNext()) {
+                tuple2 = this.child2.next();
+                if (this.p.filter(this.tuple1, tuple2)) {
+                    Tuple t = new Tuple(this.getTupleDesc());
+                    for (int i = 0; i != this.numField1; ++i) {
+                        t.setField(i, this.tuple1.getField(i));
+                    }
+                    for (int i = 0; i != this.numField2; ++i) {
+                        t.setField(this.numField1 + i, tuple2.getField(i));
+                    }
+                    return t;
+                }
+            }
+            this.tuple1 = this.child1.hasNext() ? this.child1.next() : null;
+            child2.rewind();
+        }
         return null;
     }
 }
