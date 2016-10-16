@@ -72,10 +72,10 @@ public class Insert extends AbstractDbIterator {
         // some code goes here
         Tuple tuple = null;
         if (this.numRecords != null) {
-            DbFile dbFile = Database.getCatalog().getDbFile(this.tableid);
+            BufferPool bufferPool = Database.getBufferPool();
             try {
                 while (this.child.hasNext()) {
-                    dbFile.addTuple(this.tid, this.child.next());
+                    bufferPool.insertTuple(this.tid, this.tableid, this.child.next());
                     ++this.numRecords;
                 }
             } catch (Exception e) {

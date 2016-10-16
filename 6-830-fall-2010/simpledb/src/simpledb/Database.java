@@ -13,7 +13,7 @@ import java.io.*;
 public class Database {
 	private static Database _instance = new Database();
     private final Catalog _catalog;
-    private BufferPool _bufferpool; 
+    private BufferPool _bufferpool;
 
     private final static String LOGFILENAME = "log";
     private LogFile _logfile;
@@ -32,30 +32,30 @@ public class Database {
     }
 
     /** Return the log file of the static Database instance*/
-    public static LogFile getLogFile() {
+    public synchronized static LogFile getLogFile() {
         return _instance._logfile;
     }
 
     /** Return the buffer pool of the static Database instance*/
-    public static BufferPool getBufferPool() {
+    public synchronized static BufferPool getBufferPool() {
         return _instance._bufferpool;
     }
 
     /** Return the catalog of the static Database instance*/
-    public static Catalog getCatalog() {
+    public synchronized static Catalog getCatalog() {
         return _instance._catalog;
     }
 
     /** Method used for testing -- create a new instance of the
         buffer pool and return it
     */
-    public static BufferPool resetBufferPool(int pages) {
+    public synchronized static BufferPool resetBufferPool(int pages) {
         _instance._bufferpool = new BufferPool(pages);
         return _instance._bufferpool;
     }
 
     //reset the database, used for unit tests only.
-    public static void reset() {
+    public synchronized static void reset() {
     	_instance = new Database();
     }
 

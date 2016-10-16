@@ -61,17 +61,16 @@ public class Delete extends AbstractDbIterator {
         // some code goes here
         Tuple tuple = null;
         if (this.numRecords != null) {
-            DbFile dbFile = null;
+            BufferPool bufferPool = Database.getBufferPool();
             try {
                 Tuple t;
                 while (this.child.hasNext()) {
                     t = this.child.next();
-                    if (dbFile == null) {
-                        dbFile = Database.getCatalog().getDbFile(t.getRecordId().getPageId().getTableId());
-                    }
-                    dbFile.deleteTuple(this.tid, t);
+                    bufferPool.deleteTuple(tid, t);
                     ++this.numRecords;
                 }
+            } catch (TransactionAbortedException e) {
+                throw e;
             } catch (Exception e) {
                 throw new DbException(e.getMessage());
             }

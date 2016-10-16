@@ -11,6 +11,8 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 import junit.framework.JUnit4TestAdapter;
 
+import javax.xml.crypto.Data;
+
 public class HeapFileReadTest extends SimpleDbTestBase {
     private HeapFile hf;
     private TransactionId tid;
