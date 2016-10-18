@@ -87,7 +87,7 @@ public class LockManager {
     }
 
     public void acquireSharedLock(TransactionId tid, PageId pid) throws TransactionAbortedException {
-        System.out.println(Thread.currentThread().getId() + " Start acquiring shared lock: " + tid + " " + pid);
+//        System.out.println(Thread.currentThread().getId() + " Start acquiring shared lock: " + tid + " " + pid);
         RwLock lock;
         LockInfo lockInfo;
         synchronized (this) {
@@ -113,11 +113,11 @@ public class LockManager {
             lockInfo.owners.add(tid);
             this.getOrCreatePids(tid).add(pid);
         }
-        System.out.println(Thread.currentThread().getId() + " End acquiring shared lock: " + tid + " " + pid);
+//        System.out.println(Thread.currentThread().getId() + " End acquiring shared lock: " + tid + " " + pid);
     }
 
     public void acquireExclusiveLock(TransactionId tid, PageId pid) throws TransactionAbortedException {
-        System.out.println(Thread.currentThread().getId() + " Start acquiring exclusive lock: " + tid + " " + pid);
+//        System.out.println(Thread.currentThread().getId() + " Start acquiring exclusive lock: " + tid + " " + pid);
         RwLock lock;
         LockInfo lockInfo;
         synchronized (this) {
@@ -149,7 +149,7 @@ public class LockManager {
             lockInfo.owners.add(tid);
             this.getOrCreatePids(tid).add(pid);
         }
-        System.out.println(Thread.currentThread().getId() + " End acquiring exclusive lock: " + tid + " " + pid);
+//        System.out.println(Thread.currentThread().getId() + " End acquiring exclusive lock: " + tid + " " + pid);
     }
 
     public synchronized boolean holdsLock(TransactionId tid, PageId pid) {
