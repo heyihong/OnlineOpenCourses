@@ -32,30 +32,30 @@ public class Database {
     }
 
     /** Return the log file of the static Database instance*/
-    public synchronized static LogFile getLogFile() {
+    public static LogFile getLogFile() {
         return _instance._logfile;
     }
 
     /** Return the buffer pool of the static Database instance*/
-    public synchronized static BufferPool getBufferPool() {
+    public static BufferPool getBufferPool() {
         return _instance._bufferpool;
     }
 
     /** Return the catalog of the static Database instance*/
-    public synchronized static Catalog getCatalog() {
+    public static Catalog getCatalog() {
         return _instance._catalog;
     }
 
     /** Method used for testing -- create a new instance of the
         buffer pool and return it
     */
-    public synchronized static BufferPool resetBufferPool(int pages) {
+    public static BufferPool resetBufferPool(int pages) {
         _instance._bufferpool = new BufferPool(pages);
         return _instance._bufferpool;
     }
 
     //reset the database, used for unit tests only.
-    public synchronized static void reset() {
+    public static void reset() {
     	_instance = new Database();
     }
 

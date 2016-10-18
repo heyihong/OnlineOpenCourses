@@ -3,6 +3,7 @@ package simpledb;
 import java.util.*;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Created by heyihong on 2016/10/15.
@@ -11,35 +12,38 @@ public class LockManager {
 
     private static class RwLock {
 
+        private Lock lock;
+
         private Integer numRead;
 
         private Semaphore semaphore;
 
         public RwLock() {
+            this.lock = new ReentrantLock();
             this.numRead = 0;
             this.semaphore = new Semaphore(1);
         }
 
         public void readLock() {
-            synchronized (this.numRead) {
-                if (this.numRead == 0) {
-                    try {
-                        this.semaphore.acquire();
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
+            this.lock.lock();
+            if (this.numRead == 0) {
+                try {
+                    this.semaphore.acquire();
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
-                ++this.numRead;
             }
+            ++this.numRead;
+            this.lock.unlock();
         }
 
         public void readUnlock() {
-            synchronized (this.numRead) {
-                --this.numRead;
-                if (this.numRead == 0) {
-                    this.semaphore.release();
-                }
+            this.lock.lock();
+            --this.numRead;
+            if (this.numRead == 0) {
+                this.semaphore.release();
             }
+            this.lock.unlock();
         }
 
         public void writeLock() {
@@ -175,7 +179,7 @@ public class LockManager {
         Set<PageId> pids = this.tidToPids.remove(tid);
         if (pids != null) {
             for (PageId pid : pids) {
-                System.out.println(Thread.currentThread().getId() + " Release lock " + tid + " " + pid);
+//                System.out.println(Thread.currentThread().getId() + " Release lock " + tid + " " + pid);
                 LockInfo lockInfo = this.pidToLockInfo.get(pid);
                 RwLock rwLock = this.pidToRwLock.get(pid);
                 lockInfo.owners.remove(tid);

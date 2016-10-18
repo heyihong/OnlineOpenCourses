@@ -128,7 +128,7 @@ public class BufferPool {
      */
     public void transactionComplete(TransactionId tid, boolean commit)
         throws IOException {
-        System.out.println("Transaction complete " + tid + " " + commit);
+//        System.out.println("Transaction complete " + tid + " " + commit);
         // some code goes here
         // not necessary for lab1|lab2
         synchronized (this) {

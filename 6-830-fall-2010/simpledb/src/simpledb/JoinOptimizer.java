@@ -1,5 +1,6 @@
 package simpledb;
 import java.util.*;
+import java.util.regex.Matcher;
 import javax.swing.*;
 import javax.swing.tree.*;
 
@@ -88,7 +89,7 @@ public class JoinOptimizer {
             // Insert your code here.
             // HINT:  You may need to use the variable "j" if you implemented a join
             //        algorithm that's more complicated than a basic nested-loops join.
-            return -1.0;
+            return cost1 + card1 * cost2 + (double)card1 * card2;
         }
     }
 
@@ -104,14 +105,21 @@ public class JoinOptimizer {
      * @param t2pkey Is the right-hand table a primary-key table?
      * @return The cardinality of the join
      */
-    public int estimateJoinCardinality(LogicalJoinNode j, int card1, int card2, boolean t1pkey, boolean t2pkey) {
+    public long estimateJoinCardinality(LogicalJoinNode j, long card1, long card2, boolean t1pkey, boolean t2pkey) {
         if (j instanceof LogicalSubplanJoinNode) {
             // A LogicalSubplanJoinNode represents a subquery.
             // You do not need to implement proper support for these for Lab 4.
             return card1;
         } else {
             // some code goes here
-            return -1;
+            long res = card1 * card2;
+            if (t1pkey && res > card2) {
+                res = card2;
+            }
+            if (t2pkey && res > card1) {
+                res = card1;
+            }
+            return res;
         }
     }
 
@@ -165,12 +173,30 @@ public class JoinOptimizer {
                                               HashMap<String, Double> filterSelectivities,  
                                               boolean explain) throws ParsingException 
     {
-
         // See the Lab 4 writeup for some hints as to how this function should work.
 
         // some code goes here
         //Replace the following
-        return joins;
+        PlanCache pc = new PlanCache();
+        for (int i = 1; i <= this.joins.size(); ++i) {
+            for (Set<LogicalJoinNode> joinSet : this.enumerateSubsets(this.joins, i)) {
+                CostCard bestPlan = null;
+                for (LogicalJoinNode joinToRemove : joinSet) {
+                    CostCard plan = computeCostAndCardOfSubplan(stats, filterSelectivities, joinToRemove, joinSet,
+                            bestPlan == null ? 1e100 : bestPlan.cost, pc);
+                    if (plan != null) {
+                        bestPlan = plan;
+                    }
+                }
+                if (bestPlan != null) {
+                    if (i == this.joins.size()) {
+                        i = this.joins.size();
+                    }
+                    pc.addPlan(joinSet, bestPlan.cost, bestPlan.card, bestPlan.plan);
+                }
+            }
+        }
+        return pc.getOrder(new HashSet<LogicalJoinNode>(this.joins));
     } 
  
     //===================== Private Methods =================================
@@ -221,7 +247,7 @@ public class JoinOptimizer {
         news.remove(j);
 
         double t1cost,t2cost;
-        int t1card,t2card;
+        long t1card,t2card;
         boolean leftPkey, rightPkey;
 
         if (news.isEmpty()) { //base case -- both are base relations
