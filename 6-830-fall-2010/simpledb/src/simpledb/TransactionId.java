@@ -13,6 +13,10 @@ public class TransactionId {
         myid = counter.getAndIncrement();
     }
 
+    public TransactionId(long myid) {
+        this.myid = myid;
+    }
+
     public long getId() {
         return myid;
     }

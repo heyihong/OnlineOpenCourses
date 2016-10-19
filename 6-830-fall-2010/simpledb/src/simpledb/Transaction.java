@@ -40,6 +40,7 @@ public class Transaction {
         if (started) {
             //write commit / abort records
             if (abort) {
+                Database.getBufferPool().discardPages(tid);
                 Database.getLogFile().logAbort(tid); //does rollback too
             } else {
                 //write all the dirty pages for this transaction out

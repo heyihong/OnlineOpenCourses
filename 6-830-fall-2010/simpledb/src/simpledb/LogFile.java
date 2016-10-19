@@ -1,6 +1,8 @@
 
 package simpledb;
 
+import org.omg.CORBA.TRANSACTION_REQUIRED;
+
 import java.io.*;
 import java.util.*;
 import java.lang.reflect.*;
@@ -138,7 +140,7 @@ public class LogFile {
     public int getTotalRecords() {
         return totalRecords;
     }
-    
+
     /** Write an abort record to the log for the specified tid, force
         the log to disk, and perform a rollback
         @param tid The aborting transaction.
@@ -148,10 +150,9 @@ public class LogFile {
         // calls rollback
 
         synchronized (Database.getBufferPool()) {
-
             synchronized(this) {
                 preAppend();
-                //Debug.log("ABORT");
+                Debug.log("ABORT " + tid.getId());
                 //should we verify that this is a live transaction?
 
                 // must do this here, since rollback only works for
@@ -301,7 +302,7 @@ public class LogFile {
     */
     public synchronized  void logXactionBegin(TransactionId tid)
         throws IOException {
-        Debug.log("BEGIN");
+        Debug.log("BEGIN " + tid.getId());
         if(tidToFirstLogRecord.get(tid.getId()) != null){
             System.err.printf("logXactionBegin: already began this tid\n");
             throw new IOException("double logXactionBegin()");
@@ -321,7 +322,7 @@ public class LogFile {
         //make sure we have buffer pool lock before proceeding
         synchronized (Database.getBufferPool()) {
             synchronized (this) {
-                //Debug.log("CHECKPOINT, offset = " + raf.getFilePointer());
+                Debug.log("CHECKPOINT, offset = " + raf.getFilePointer());
                 preAppend();
                 long startCpOffset, endCpOffset;
                 Set<Long> keys = tidToFirstLogRecord.keySet();
@@ -467,6 +468,26 @@ public class LogFile {
             synchronized(this) {
                 preAppend();
                 // some code goes here
+                Long firstRecord = this.tidToFirstLogRecord.get(tid.getId());
+                if (firstRecord == null) {
+                    throw new NoSuchElementException();
+                }
+                long offset = raf.length();
+                do {
+                    this.raf.seek(offset - LONG_SIZE);
+                    long prevOffset = this.raf.readLong();
+                    this.raf.seek(prevOffset);
+                    int type = this.raf.readInt();
+                    long record_tid = this.raf.readLong();
+                    if (type == UPDATE_RECORD && tid.getId() == record_tid) {
+                        Page page = readPageData(this.raf);
+                        DbFile dbFile = Database.getCatalog().getDbFile(page.getId().getTableId());
+                        dbFile.writePage(page);
+                        Database.getBufferPool().discardPage(page.getId());
+                    }
+                    offset = prevOffset;
+                } while (offset != firstRecord);
+                this.raf.seek(this.raf.length());
             }
         }
     }
@@ -494,6 +515,52 @@ public class LogFile {
             synchronized (this) {
                 recoveryUndecided = false;
                 // some code goes here
+                this.raf.seek(0);
+                long lastCheckpoint = this.raf.readLong();
+                long offset = this.raf.length();
+                int type;
+                long firstRecord;
+                long record_tid;
+                Set<Long> completeTids = new HashSet<Long>();
+                do {
+                    this.raf.seek(offset - LONG_SIZE);
+                    long prevOffset = this.raf.readLong();
+                    if (prevOffset == -1) {
+                        break;
+                    }
+                    this.raf.seek(prevOffset);
+                    type = this.raf.readInt();
+                    switch (type) {
+                        case BEGIN_RECORD:
+                            record_tid = this.raf.readLong();
+                            firstRecord = this.raf.readLong();
+                            if (!completeTids.contains(record_tid)) {
+                                this.tidToFirstLogRecord.put(record_tid, firstRecord);
+                            }
+                            break;
+                        case COMMIT_RECORD:case ABORT_RECORD:
+                            record_tid = this.raf.readLong();
+                            completeTids.add(record_tid);
+                            break;
+                        case CHECKPOINT_RECORD:
+                            this.raf.readLong();
+                            for (int numTrans = this.raf.readInt(); numTrans > 0; --numTrans) {
+                                record_tid = this.raf.readLong();
+                                firstRecord = this.raf.readLong();
+                                if (!completeTids.contains(record_tid)) {
+                                    this.tidToFirstLogRecord.put(record_tid, firstRecord);
+                                }
+                            }
+                            break;
+                    }
+                    offset = prevOffset;
+                } while (offset != lastCheckpoint);
+                this.currentOffset = this.raf.length();
+                Long[] tids = new Long[this.tidToFirstLogRecord.size()];
+                this.tidToFirstLogRecord.keySet().toArray(tids);
+                for (int i = 0; i != tids.length; ++i) {
+                    this.logAbort(new TransactionId(tids[i]));
+                }
             }
          }
     }

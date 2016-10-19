@@ -74,6 +74,9 @@ public class TransactionTest extends TestUtil.CreateHeapFile {
 
     p.addTuple(t);
     p.markDirty(true, tid1);
+    if (commit) {
+      bp.flushPages(tid1);
+    }
     bp.transactionComplete(tid1, commit);
 
     // now, flush the buffer pool and access the page again from disk.

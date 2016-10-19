@@ -131,24 +131,6 @@ public class BufferPool {
 //        System.out.println("Transaction complete " + tid + " " + commit);
         // some code goes here
         // not necessary for lab1|lab2
-        synchronized (this) {
-            List<PageId> dirtyPids = new LinkedList<PageId>();
-            for (Map.Entry<PageId, Page> entry : this.pages.entrySet()) {
-                if (tid.equals(entry.getValue().isDirty())) {
-                    dirtyPids.add(entry.getKey());
-                }
-            }
-            if (commit) {
-                for (PageId pid : dirtyPids) {
-                    this.flushPage(pid);
-                    this.pages.get(pid).setBeforeImage();
-                }
-            } else {
-                for (PageId pid : dirtyPids) {
-                    this.pages.remove(pid);
-                }
-            }
-        }
         this.lockManager.releaseLocks(tid);
     }
 
@@ -220,6 +202,21 @@ public class BufferPool {
     public synchronized void discardPage(PageId pid) {
         // some code goes here
         // only necessary for lab5
+        this.pages.remove(pid);
+    }
+
+    public synchronized void discardPages(TransactionId tid) {
+        // some code goes here
+        // only necessary for lab5
+        List<PageId> dirtiers = new LinkedList<PageId>();
+        for (Map.Entry<PageId, Page> entry : this.pages.entrySet()) {
+            if (tid.equals(entry.getValue().isDirty())) {
+                dirtiers.add(entry.getKey());
+            }
+        }
+        for (PageId pid : dirtiers) {
+            this.pages.remove(pid);
+        }
     }
 
     /**
@@ -242,14 +239,20 @@ public class BufferPool {
         Database.getLogFile().force();
         DbFile file = Database.getCatalog().getDbFile(pid.getTableId());
         file.writePage(p);
+        p.setBeforeImage();
         p.markDirty(false, null);
     }
 
     /** Write all pages of the specified transaction to disk.
      */
-    public synchronized  void flushPages(TransactionId tid) throws IOException {
+    public synchronized void flushPages(TransactionId tid) throws IOException {
         // some code goes here
         // not necessary for lab1|lab2|lab3
+        for (Map.Entry<PageId, Page> entry : this.pages.entrySet()) {
+            if (tid.equals(entry.getValue().isDirty())) {
+                this.flushPage(entry.getKey());
+            }
+        }
     }
 
     /**
@@ -259,17 +262,12 @@ public class BufferPool {
     private synchronized  void evictPage() throws DbException {
         // some code goes here
         // not necessary for lab1
-        for (Map.Entry<PageId, Page> entry : this.pages.entrySet()) {
-            if (entry.getValue().isDirty() == null) {
-                try {
-                    this.flushPage(entry.getKey());
-                } catch (IOException e) {
-                    throw new DbException(e.getMessage());
-                }
-                this.pages.remove(entry.getKey());
-                return;
-            }
+        PageId pid = this.pages.keySet().iterator().next();
+        try {
+            this.flushPage(pid);
+        } catch (IOException e) {
+
         }
-        throw new DbException("All pages in buffer pool are dirty");
+        this.pages.remove(pid);
     }
 }

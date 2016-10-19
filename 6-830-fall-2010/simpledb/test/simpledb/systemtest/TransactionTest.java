@@ -242,7 +242,8 @@ public class TransactionTest extends SimpleDbTestBase {
         // Scanning the table must fail because it can't evict the dirty page
         try {
             EvictionTest.findMagicTuple(f, t);
-            fail("Expected scan to run out of available buffer pages");
+            // In lab5, it can write dirty pages in the disk because of rollback
+            //fail("Expected scan to run out of available buffer pages");
         } catch (DbException e) {}
         t.commit();
     }
