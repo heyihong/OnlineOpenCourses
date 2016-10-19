@@ -132,18 +132,19 @@ public class BufferPool {
         // some code goes here
         // not necessary for lab1|lab2
         synchronized (this) {
-            List<PageId> dirty = new LinkedList<PageId>();
+            List<PageId> dirtyPids = new LinkedList<PageId>();
             for (Map.Entry<PageId, Page> entry : this.pages.entrySet()) {
                 if (tid.equals(entry.getValue().isDirty())) {
-                    dirty.add(entry.getKey());
+                    dirtyPids.add(entry.getKey());
                 }
             }
             if (commit) {
-                for (PageId pid : dirty) {
+                for (PageId pid : dirtyPids) {
                     this.flushPage(pid);
+                    this.pages.get(pid).setBeforeImage();
                 }
             } else {
-                for (PageId pid : dirty) {
+                for (PageId pid : dirtyPids) {
                     this.pages.remove(pid);
                 }
             }
@@ -228,12 +229,20 @@ public class BufferPool {
     private synchronized  void flushPage(PageId pid) throws IOException {
         // some code goes here
         // not necessary for lab1
-        Page page = pages.get(pid);
-        if (page.isDirty() != null) {
-            DbFile dbFile = Database.getCatalog().getDbFile(pid.getTableId());
-            dbFile.writePage(page);
-            page.markDirty(false, null);
+        Page p = pages.get(pid);
+        if (p == null) {
+            return; //not in buffer pool -- doesn't need to be flushed
         }
+        // RECOVERY
+        TransactionId dirtier = p.isDirty();
+        if (dirtier == null) {
+            return;
+        }
+        Database.getLogFile().logWrite(dirtier, p.getBeforeImage(), p);
+        Database.getLogFile().force();
+        DbFile file = Database.getCatalog().getDbFile(pid.getTableId());
+        file.writePage(p);
+        p.markDirty(false, null);
     }
 
     /** Write all pages of the specified transaction to disk.

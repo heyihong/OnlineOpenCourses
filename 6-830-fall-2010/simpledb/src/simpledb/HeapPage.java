@@ -68,7 +68,6 @@ public class HeapPage implements Page {
     private int getNumTuples() {        
         // some code goes here
         return (BufferPool.PAGE_SIZE*8) / (this.td.getSize() * 8 + 1);
-
     }
 
     /**
@@ -352,6 +351,11 @@ public class HeapPage implements Page {
             Tuple tup = tuples[this.i];
             for (++this.i; this.i < numSlots && !getSlot(this.i); ++this.i);
             return tup;
+        }
+
+        @Override
+        public void remove() {
+            throw new UnsupportedOperationException("Cannot removed");
         }
     }
 
