@@ -458,7 +458,7 @@ public class JoinOptimizerTest extends SimpleDbTestBase {
 		// you shouldn't end up with more than you started with
 		Assert.assertEquals(result.size(), nodes.size());
 		
-		// Make sure that "bigTable" is the innermost table in the join
-		Assert.assertEquals(result.get(result.size()-1).t1, "a");		
+		// Make sure that "a" is the innermost table in the join
+		Assert.assertEquals(result.get(result.size()-1).t2, "a");
 	}
 }

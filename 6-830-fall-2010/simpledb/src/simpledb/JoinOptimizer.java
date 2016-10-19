@@ -80,7 +80,7 @@ public class JoinOptimizer {
      * @param cost2 Estimated cost of one full scan of the table on the right-hand side of the query
      * @return An estimate of the cost of this query, in terms of cost1 and cost2
      */
-    public double estimateJoinCost(LogicalJoinNode j, int card1, int card2, double cost1, double cost2) {
+    public double estimateJoinCost(LogicalJoinNode j, long card1, long card2, double cost1, double cost2) {
         if (j instanceof LogicalSubplanJoinNode) {
         	// A LogicalSubplanJoinNode represents a subquery.
         	// You do not need to implement proper support for these for Lab 4.
@@ -89,7 +89,7 @@ public class JoinOptimizer {
             // Insert your code here.
             // HINT:  You may need to use the variable "j" if you implemented a join
             //        algorithm that's more complicated than a basic nested-loops join.
-            return cost1 + card1 * cost2 + (double)card1 * card2;
+            return cost1 + card1 * cost2 + card1 * card2;
         }
     }
 
@@ -105,19 +105,29 @@ public class JoinOptimizer {
      * @param t2pkey Is the right-hand table a primary-key table?
      * @return The cardinality of the join
      */
-    public long estimateJoinCardinality(LogicalJoinNode j, long card1, long card2, boolean t1pkey, boolean t2pkey) {
+    public int estimateJoinCardinality(LogicalJoinNode j, int card1, int card2, boolean t1pkey, boolean t2pkey) {
         if (j instanceof LogicalSubplanJoinNode) {
             // A LogicalSubplanJoinNode represents a subquery.
             // You do not need to implement proper support for these for Lab 4.
             return card1;
         } else {
             // some code goes here
-            long res = card1 * card2;
-            if (t1pkey && res > card2) {
-                res = card2;
-            }
-            if (t2pkey && res > card1) {
-                res = card1;
+            int res;
+            switch (j.p) {
+                case EQUALS:
+                    res = Math.max(card1, card2);
+                    if (t1pkey && res > card2) {
+                        res = card2;
+                    }
+                    if (t2pkey && res > card1) {
+                        res = card1;
+                    }
+                    break;
+                case LESS_THAN: case LESS_THAN_OR_EQ: case GREATER_THAN: case GREATER_THAN_OR_EQ:
+                    res = (int)(0.3 * card1 * card2);
+                    break;
+                default:
+                    res = card1 * card2;
             }
             return res;
         }
@@ -247,7 +257,7 @@ public class JoinOptimizer {
         news.remove(j);
 
         double t1cost,t2cost;
-        long t1card,t2card;
+        int t1card,t2card;
         boolean leftPkey, rightPkey;
 
         if (news.isEmpty()) { //base case -- both are base relations
@@ -285,6 +295,7 @@ public class JoinOptimizer {
                 t2cost = stats.get(j.t1).estimateScanCost();
                 t2card = stats.get(j.t1).estimateTableCardinality(filterSelectivities.get(j.t1));
                 rightPkey = isPkey(j.t1,j.f1);
+                j = j.swapInnerOuter();
 
             } else {
                 //don't consider this plan if one of j.t1 or j.t2

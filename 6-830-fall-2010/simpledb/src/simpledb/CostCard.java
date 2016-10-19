@@ -8,7 +8,7 @@ public class CostCard {
     /** The cost of the optimal subplan */
     public double cost;
     /** The cardinality of the optimal subplan */
-    public long card;
+    public int card;
     /** The optimal subplan */
     public Vector<LogicalJoinNode> plan;
 }

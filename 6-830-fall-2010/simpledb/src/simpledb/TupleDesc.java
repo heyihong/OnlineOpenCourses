@@ -171,6 +171,13 @@ public class TupleDesc {
      */
     public String toString() {
         // some code goes here
-        return "";
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i != this.numFields(); ++i) {
+            if (i > 0) {
+                builder.append(", ");
+            }
+            builder.append(this.typeAr[i] + "(" + this.fieldAr[i] + ")");
+        }
+        return builder.toString();
     }
 }

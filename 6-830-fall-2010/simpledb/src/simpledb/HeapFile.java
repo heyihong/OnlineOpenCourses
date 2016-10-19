@@ -83,6 +83,7 @@ public class HeapFile implements DbFile {
             if (fis.read(data) == BufferPool.PAGE_SIZE) {
                 page = new HeapPage(new HeapPageId(this.getId(), pid.pageno()), data);
             }
+            fis.close();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -97,6 +98,8 @@ public class HeapFile implements DbFile {
         FileChannel ch = fos.getChannel();
         ch.position(BufferPool.PAGE_SIZE * page.getId().pageno());
         ch.write(ByteBuffer.wrap(page.getPageData()));
+        ch.close();
+        fos.close();
     }
 
     /**
