@@ -46,6 +46,10 @@ public class LockManager {
             this.lock.unlock();
         }
 
+        public boolean tryWriteLock() {
+            return this.semaphore.tryAcquire();
+        }
+
         public void writeLock() {
             try {
                 this.semaphore.acquire();
@@ -124,6 +128,7 @@ public class LockManager {
 //        System.out.println(Thread.currentThread().getId() + " Start acquiring exclusive lock: " + tid + " " + pid);
         RwLock lock;
         LockInfo lockInfo;
+        boolean upgradeLock = false;
         synchronized (this) {
             lockInfo = this.getOrCreateLockInfo(pid);
             if (lockInfo.owners.contains(tid)) {
@@ -134,6 +139,7 @@ public class LockManager {
                     throw new TransactionAbortedException();
                 }
                 releaseLock(tid, pid);
+                upgradeLock = true;
             }
             if (!lockInfo.owners.isEmpty()) {
                 this.depGraph.put(tid, lockInfo.owners);
@@ -145,7 +151,11 @@ public class LockManager {
             lockInfo.acquirers.add(tid);
             lock = this.getOrCreateRwLock(pid);
         }
-        lock.writeLock();
+        if (!upgradeLock) {
+            lock.writeLock();
+        } else if (!lock.tryWriteLock()) {
+            throw new TransactionAbortedException();
+        }
         synchronized (this) {
             this.depGraph.remove(tid);
             lockInfo.exclusive = true;
