@@ -12,20 +12,16 @@ public class LockManager {
 
     private static class RwLock {
 
-        private Lock lock;
-
         private Integer numRead;
 
         private Semaphore semaphore;
 
         public RwLock() {
-            this.lock = new ReentrantLock();
             this.numRead = 0;
             this.semaphore = new Semaphore(1);
         }
 
-        public void readLock() {
-            this.lock.lock();
+        public synchronized void readLock() {
             if (this.numRead == 0) {
                 try {
                     this.semaphore.acquire();
@@ -34,20 +30,13 @@ public class LockManager {
                 }
             }
             ++this.numRead;
-            this.lock.unlock();
         }
 
-        public void readUnlock() {
-            this.lock.lock();
+        public synchronized void readUnlock() {
             --this.numRead;
             if (this.numRead == 0) {
                 this.semaphore.release();
             }
-            this.lock.unlock();
-        }
-
-        public boolean tryWriteLock() {
-            return this.semaphore.tryAcquire();
         }
 
         public void writeLock() {
@@ -128,18 +117,21 @@ public class LockManager {
 //        System.out.println(Thread.currentThread().getId() + " Start acquiring exclusive lock: " + tid + " " + pid);
         RwLock lock;
         LockInfo lockInfo;
-        boolean upgradeLock = false;
         synchronized (this) {
             lockInfo = this.getOrCreateLockInfo(pid);
             if (lockInfo.owners.contains(tid)) {
-                if (lockInfo.exclusive) {
-                    return;
+                if (!lockInfo.exclusive) {
+                    // Upgrading shared lock to exclusive lock
+                    if (lockInfo.owners.size() > 1 || !lockInfo.acquirers.isEmpty()) {
+                        throw new TransactionAbortedException();
+                    }
+                    lock = this.getOrCreateRwLock(pid);
+                    lock.readUnlock();
+                    // It will not lead to deadlock, since no thread is owning or acquiring the lock
+                    lock.writeLock();
+                    lockInfo.exclusive = true;
                 }
-                if (lockInfo.owners.size() > 1 || !lockInfo.acquirers.isEmpty()) {
-                    throw new TransactionAbortedException();
-                }
-                releaseLock(tid, pid);
-                upgradeLock = true;
+                return;
             }
             if (!lockInfo.owners.isEmpty()) {
                 this.depGraph.put(tid, lockInfo.owners);
@@ -151,11 +143,7 @@ public class LockManager {
             lockInfo.acquirers.add(tid);
             lock = this.getOrCreateRwLock(pid);
         }
-        if (!upgradeLock) {
-            lock.writeLock();
-        } else if (!lock.tryWriteLock()) {
-            throw new TransactionAbortedException();
-        }
+        lock.writeLock();
         synchronized (this) {
             this.depGraph.remove(tid);
             lockInfo.exclusive = true;
@@ -230,11 +218,12 @@ public class LockManager {
     }
 
 
-        /**
-         * detect whether tid is in a deadlock
-         * @param tid
-         * @return whether has deadlock
-         */
+    /**
+     * detect whether tid is in a deadlock
+     *
+     * @param tid
+     * @return whether has deadlock
+     */
     private boolean hasDeadlock(TransactionId tid) {
         Deque<TransactionId> qu = new LinkedList<TransactionId>();
         Set<TransactionId> visited = new HashSet<TransactionId>();
@@ -249,7 +238,6 @@ public class LockManager {
                         visited.add(y);
                         qu.push(y);
                     } else if (y.equals(tid)) {
-                        System.out.println("Transaction " + tid + " will deadlock");
                         return true;
                     }
                 }
