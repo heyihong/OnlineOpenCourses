@@ -1,9 +1,6 @@
 package simpledb;
 
 import java.util.*;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Created by heyihong on 2016/10/15.
@@ -12,44 +9,58 @@ public class LockManager {
 
     private static class RwLock {
 
-        private Integer numRead;
+        private int numRead;
 
-        private Semaphore semaphore;
+        private boolean isExclusive;
 
         public RwLock() {
             this.numRead = 0;
-            this.semaphore = new Semaphore(1);
+            this.isExclusive = false;
         }
 
         public synchronized void readLock() {
-            if (this.numRead == 0) {
-                try {
-                    this.semaphore.acquire();
-                } catch (Exception e) {
-                    e.printStackTrace();
+            try {
+                while (this.isExclusive) {
+                    this.wait();
                 }
+                ++this.numRead;
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
-            ++this.numRead;
         }
 
         public synchronized void readUnlock() {
             --this.numRead;
-            if (this.numRead == 0) {
-                this.semaphore.release();
-            }
+            this.notify();
         }
 
-        public void writeLock() {
+        public synchronized void writeLock() {
             try {
-                this.semaphore.acquire();
-            } catch (Exception e) {
+                while (this.numRead > 0 || this.isExclusive) {
+                    this.wait();
+                }
+                this.isExclusive = true;
+            } catch (InterruptedException e) {
                 e.printStackTrace();
             }
         }
 
 
-        public void writeUnlock() {
-            this.semaphore.release();
+        public synchronized void writeUnlock() {
+            this.isExclusive = false;
+            this.notify();
+        }
+
+        public synchronized void upgradeLock() {
+            try {
+                while (this.numRead > 1) {
+                    this.wait();
+                }
+                this.numRead = 0;
+                this.isExclusive = true;
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
         }
     }
 
@@ -57,14 +68,11 @@ public class LockManager {
 
         public boolean exclusive;
 
-        public Set<TransactionId> owners;
-
-        public Set<TransactionId> acquirers;
+        public Set<TransactionId> holders;
 
         public LockInfo() {
             this.exclusive = false;
-            this.owners = new HashSet<TransactionId>();
-            this.acquirers = new HashSet<TransactionId>();
+            this.holders = new HashSet<TransactionId>();
         }
     }
 
@@ -89,25 +97,23 @@ public class LockManager {
         LockInfo lockInfo;
         synchronized (this) {
             lockInfo = this.getOrCreateLockInfo(pid);
-            if (lockInfo.owners.contains(tid)) {
+            if (lockInfo.holders.contains(tid)) {
                 return;
             }
-            if (!lockInfo.owners.isEmpty() && lockInfo.exclusive) {
-                this.depGraph.put(tid, lockInfo.owners);
+            if (!lockInfo.holders.isEmpty() && lockInfo.exclusive) {
+                this.depGraph.put(tid, lockInfo.holders);
                 if (this.hasDeadlock(tid)) {
                     this.depGraph.remove(tid);
                     throw new TransactionAbortedException();
                 }
             }
-            lockInfo.acquirers.add(tid);
             lock = this.getOrCreateRwLock(pid);
         }
         lock.readLock();
         synchronized (this) {
             this.depGraph.remove(tid);
             lockInfo.exclusive = false;
-            lockInfo.acquirers.remove(tid);
-            lockInfo.owners.add(tid);
+            lockInfo.holders.add(tid);
             this.getOrCreatePids(tid).add(pid);
         }
 //        System.out.println(Thread.currentThread().getId() + " End acquiring shared lock: " + tid + " " + pid);
@@ -115,40 +121,35 @@ public class LockManager {
 
     public void acquireExclusiveLock(TransactionId tid, PageId pid) throws TransactionAbortedException {
 //        System.out.println(Thread.currentThread().getId() + " Start acquiring exclusive lock: " + tid + " " + pid);
+        boolean isUpgrade = false;
         RwLock lock;
         LockInfo lockInfo;
         synchronized (this) {
             lockInfo = this.getOrCreateLockInfo(pid);
-            if (lockInfo.owners.contains(tid)) {
-                if (!lockInfo.exclusive) {
-                    // Upgrading shared lock to exclusive lock
-                    if (lockInfo.owners.size() > 1 || !lockInfo.acquirers.isEmpty()) {
-                        throw new TransactionAbortedException();
-                    }
-                    lock = this.getOrCreateRwLock(pid);
-                    lock.readUnlock();
-                    // It will not lead to deadlock, since no thread is owning or acquiring the lock
-                    lock.writeLock();
-                    lockInfo.exclusive = true;
+            if (lockInfo.holders.contains(tid)) {
+                if (lockInfo.exclusive) {
+                    return;
                 }
-                return;
+                // need to upgrade from shared lock to exclusive lock
+                isUpgrade = true;
             }
-            if (!lockInfo.owners.isEmpty()) {
-                this.depGraph.put(tid, lockInfo.owners);
-                if (this.hasDeadlock(tid)) {
-                    this.depGraph.remove(tid);
-                    throw new TransactionAbortedException();
-                }
+            // the dependency graph may contain self-loop for upgrade
+            this.depGraph.put(tid, lockInfo.holders);
+            if (this.hasDeadlock(tid)) {
+                this.depGraph.remove(tid);
+                throw new TransactionAbortedException();
             }
-            lockInfo.acquirers.add(tid);
             lock = this.getOrCreateRwLock(pid);
         }
-        lock.writeLock();
+        if (isUpgrade) {
+            lock.upgradeLock();
+        } else {
+            lock.writeLock();
+        }
         synchronized (this) {
             this.depGraph.remove(tid);
             lockInfo.exclusive = true;
-            lockInfo.acquirers.remove(tid);
-            lockInfo.owners.add(tid);
+            lockInfo.holders.add(tid);
             this.getOrCreatePids(tid).add(pid);
         }
 //        System.out.println(Thread.currentThread().getId() + " End acquiring exclusive lock: " + tid + " " + pid);
@@ -164,7 +165,7 @@ public class LockManager {
         if (pids != null && pids.remove(pid)) {
             LockInfo lockInfo = this.pidToLockInfo.get(pid);
             RwLock rwLock = this.pidToRwLock.get(pid);
-            lockInfo.owners.remove(tid);
+            lockInfo.holders.remove(tid);
             if (lockInfo.exclusive) {
                 rwLock.writeUnlock();
             } else {
@@ -180,7 +181,7 @@ public class LockManager {
 //                System.out.println(Thread.currentThread().getId() + " Release lock " + tid + " " + pid);
                 LockInfo lockInfo = this.pidToLockInfo.get(pid);
                 RwLock rwLock = this.pidToRwLock.get(pid);
-                lockInfo.owners.remove(tid);
+                lockInfo.holders.remove(tid);
                 if (lockInfo.exclusive) {
                     rwLock.writeUnlock();
                 } else {
@@ -234,11 +235,13 @@ public class LockManager {
             Set<TransactionId> adjs = this.depGraph.get(x);
             if (adjs != null) {
                 for (TransactionId y : adjs) {
+                    // except self-loop condition
+                    if (!x.equals(tid) && y.equals(tid)) {
+                        return true;
+                    }
                     if (!visited.contains(y)) {
                         visited.add(y);
                         qu.push(y);
-                    } else if (y.equals(tid)) {
-                        return true;
                     }
                 }
             }
